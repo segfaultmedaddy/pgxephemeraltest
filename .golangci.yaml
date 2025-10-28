@@ -1,0 +1,98 @@
+version: "2"
+run:
+  timeout: 10m
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+    golines:
+      max-len: 120
+      tab-len: 8
+    gci:
+      sections:
+        - blank
+        - standard
+        - default
+        - localmodule
+        - dot
+linters:
+  default: all
+  disable:
+    - cyclop # cyclomatic complexity, biased bs
+    - err113 # wants errors to be defined as var upfront, annoying
+    - funlen # detects long functions, annoying
+    - gocognit # calculates cognitive complexity, biased bs
+    - gocyclo # another cyclomatic complexity, biased bs
+    - godox # bans TODOs. BS
+    - inamedparam # we don't use named parameters in interfaces
+    - ireturn # bans returning interface types, buggy and biased bs
+    - lll # detects long lines, annoying
+    - maintidx # detects maintainability index, annoying biased bs
+    - mnd # detects magic numbers, annoying
+    - nestif # detects nested if statements, stupid
+    - nlreturn # blank lines after return statements, annoying
+    - testpackage # requires to create tests in separate packages like package_test
+    - noinlineerr # detects inline errors, bullshit
+    - wsl # replaced by wsl v5
+    - varnamelen # I like to have short variable names
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - exhaustruct
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "math/rand$"
+              desc: use "math/rand/v2"
+            - pkg: "github.com/jackc/pgx/v4"
+              desc: use "github.com/jackc/pgx/v5"
+            - pkg: "github.com/pkg/errors"
+              desc: use stdlib
+            - pkg: "database/sql"
+              desc: use "github.com/jackc/pgx/v5"
+            - pkg: "github.com/gofrs/uuid"
+              desc: use "github.com/google/uuid"
+    exhaustive:
+      default-signifies-exhaustive: true
+    sloglint:
+      context: all
+    # report only misuses of `t.Parallel()`
+    paralleltest:
+      ignore-missing: true
+      ignore-missing-subtests: true
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+    testifylint:
+      enable-all: true
+    govet:
+      enable-all: true
+      disable:
+        - shadow
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-no-explanation:
+        - gochecknoglobals
+        - exhaustruct
+    exhaustruct:
+      exclude:
+        - github.com/jackc/pgx/v5/pgtype.Numeric
