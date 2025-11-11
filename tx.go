@@ -23,7 +23,7 @@ type TxFactory struct {
 // NewTxFactory creates a new TxFactory instance.
 //
 // The provided database connection pool must be open and ready to use.
-func NewTxFactory(executor Executor, opts ...FactoryOption) TxFactory {
+func NewTxFactory(executor Executor, opts ...FactoryOption) *TxFactory {
 	//nolint:exhaustruct // defaults will initialize the missing fields.
 	options := factoryOptions{}
 	for _, opt := range opts {
@@ -32,27 +32,27 @@ func NewTxFactory(executor Executor, opts ...FactoryOption) TxFactory {
 
 	options.defaults()
 
-	return TxFactory{executor: executor}
+	return &TxFactory{executor: executor}
 }
 
 // NewTxFactoryFromConnString creates a new connection pool from the provided connection string and
 // returns a new TxFactory instance.
 //
 // A TxFactory instance is returned along with a cleanup function that
-// should be called after the test suite completes.
+// should be called after testing is complete.
 func NewTxFactoryFromConnString(
 	ctx context.Context,
 	connString string,
 	opts ...FactoryOption,
-) (TxFactory, func(), error) {
+) (*TxFactory, func(), error) {
 	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
-		return TxFactory{}, nil, fmt.Errorf("pgxephemeraltest: failed to create connection pool: %w", err)
+		return nil, nil, fmt.Errorf("pgxephemeraltest: failed to create connection pool: %w", err)
 	}
 
-	factory := NewTxFactory(pool, opts...)
+	f := NewTxFactory(pool, opts...)
 
-	return factory, pool.Close, nil
+	return f, pool.Close, nil
 }
 
 // Tx spawns a database transaction for a given test. Once the test completes,

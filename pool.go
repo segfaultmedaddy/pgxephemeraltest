@@ -28,7 +28,7 @@ func (p *factoryOptions) defaults() { p.cleanupTimeout = DefaultCleanupTimeout }
 
 // Migrator applies the migration to the database.
 //
-// Migrator is used to apply migrations for the template database,
+// Migrator is used to apply migrations for the template database
 // on PoolFactory initialization, which is used for making copies of isolated
 // ephemeral databases.
 type Migrator interface {
@@ -49,11 +49,11 @@ type Migrator interface {
 // used for testing purposes.
 //
 // It helps to create a completely new database for each test allowing
-// to run them in parallel without interfering with each other, helping to
-// avoid data leakage between tests.
+// to run them in parallel without interfering with each other avoiding data
+// leakage between tests.
 //
-// Each created database is prepared with the migration set provided by the
-// passed migrator.
+// Each created database is prepared with applied migration provided by running
+// provided migrator.
 type PoolFactory struct {
 	mc             *pgx.Conn // protected by mu
 	config         *pgxpool.Config
@@ -64,9 +64,8 @@ type PoolFactory struct {
 
 // NewPoolFactory creates a new PoolFactory instance.
 //
-// It initializes a new database, applies migration to it and makes
-// it available for use as a Postgres template. The template is copied for
-// each new ephemeral database.
+// It initializes a new database, applies migration to it and marks it as
+// a template. The template is copied for each newly created ephemeral database.
 func NewPoolFactory(
 	ctx context.Context,
 	config *pgxpool.Config,
@@ -94,8 +93,8 @@ func NewPoolFactory(
 	return &f, nil
 }
 
-// NewPoolFactoryFromConnString is like NePoolFactoryw
-// but the base pool config is provided via connection string.
+// NewPoolFactoryFromConnString is like NewPoolFactory, but the base pool config
+// is provided via connection string.
 func NewPoolFactoryFromConnString(
 	ctx context.Context,
 	connString string,
@@ -110,16 +109,15 @@ func NewPoolFactoryFromConnString(
 	return NewPoolFactory(ctx, config, migrator, opts...)
 }
 
-// Pool creates a new completely isolated database ready for use.
-//
-// If the test fails the database is left intact for debugging,
-// otherwise it is dropped.
+// Pool returns a pool connected to a newly created isolated database
+// ready for use.
 //
 // It is expected that each test case uses a separate database, which
 // helps to isolate tests and prevent data leakage between them.
 //
-// Lifetime of the pool is managed by the tb.
-// The pool is closed when the test is done.
+// Lifetime of the pool is managed by the tb, the pool is closed when
+// the test is done. If a test is failed the database is left intact for debugging,
+// otherwise it is dropped.
 func (f *PoolFactory) Pool(tb testing.TB) *pgxpool.Pool {
 	tb.Helper()
 
@@ -177,8 +175,8 @@ func (f *PoolFactory) init(ctx context.Context, migrator Migrator) (err error) {
 	}
 
 	// Linearize the creation of database template across multiple processes, since
-	// it is a shared resource and can cause conflicts if multiple processes
-	// try to create it simultaneously.
+	// it is a shared resource and can cause conflicts, when trying to initialize
+	// it simultaneously.
 	releaseLock, err := acquireLock(ctx, mc, template)
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to take lock: %w", err)

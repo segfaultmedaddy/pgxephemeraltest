@@ -43,6 +43,7 @@ linters:
     - noinlineerr # detects inline errors, bullshit
     - wsl # replaced by wsl v5
     - varnamelen # I like to have short variable names
+    - unqueryvet # no need to query vet
   exclusions:
     generated: lax
     presets:

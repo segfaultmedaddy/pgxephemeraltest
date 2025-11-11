@@ -1,9 +1,7 @@
 {
-  description = "foundations - a modular library designed to build maintainable production-grade systems.";
-
   inputs = {
     devenv.url = "github:cachix/devenv";
-    nixpkgs.url = "github:cachix/devenv-nixpkgs/rolling";
+    nixpkgs.url = "nixpkgs/nixos-unstable";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     flake-parts.url = "github:hercules-ci/flake-parts";
     flake-root.url = "github:srid/flake-root";
@@ -53,13 +51,13 @@
           };
 
           devenv.shells.default = {
+            containers = lib.mkForce { };
+
             cachix.enable = true;
             cachix.pull = [
               "devenv"
               "pre-commit-hooks"
             ];
-
-            containers = lib.mkForce { };
 
             packages = with pkgs; [
               go
@@ -86,10 +84,20 @@
 
             git-hooks = {
               hooks = {
+                check = {
+                  enable = true;
+                  name = "check";
+                  description = "Nix Check";
+                  entry = ''
+                    nix flake check . --no-pure-eval
+                  '';
+                  pass_filenames = false;
+                };
+
                 lint = {
                   enable = true;
                   name = "lint";
-                  description = "Lint";
+                  description = "Go Lint";
                   entry = ''
                     lint
                   '';
@@ -117,6 +125,14 @@
               services.postgres = {
                 enable = true;
                 package = pkgs.postgresql_17;
+
+                settings = {
+                  fsync = "off";
+                  full_page_writes = "off";
+                  synchronous_commit = "off";
+                  log_statement = "all";
+                  shared_buffers = "128MB";
+                };
 
                 initialScript = ''
                   CREATE USER ${user} SUPERUSER PASSWORD '${password}';
