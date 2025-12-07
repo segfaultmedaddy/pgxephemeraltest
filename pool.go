@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/docker/docker/pkg/namesgenerator"
@@ -109,6 +108,12 @@ func NewPoolFactoryFromConnString(
 	return NewPoolFactory(ctx, config, migrator, opts...)
 }
 
+// Template returns the template name used to create ephemeral databases.
+//
+// It is computed once on PoolFactory creation and stays the same
+// for the lifetime of the factory.
+func (f *PoolFactory) Template() string { return f.template }
+
 // Pool returns a pool connected to a newly created isolated database
 // ready for use.
 //
@@ -118,7 +123,7 @@ func NewPoolFactoryFromConnString(
 // Lifetime of the pool is managed by the tb, the pool is closed when
 // the test is done. If a test is failed the database is left intact for debugging,
 // otherwise it is dropped.
-func (f *PoolFactory) Pool(tb testing.TB) *pgxpool.Pool {
+func (f *PoolFactory) Pool(tb TB) *pgxpool.Pool {
 	tb.Helper()
 
 	ctx := tb.Context()

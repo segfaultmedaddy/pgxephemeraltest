@@ -61,9 +61,11 @@
 
             packages = with pkgs; [
               go
+              gotools
               gopls
               govulncheck
               golangci-lint
+              mockgen
             ];
 
             scripts = {
@@ -108,7 +110,7 @@
 
             languages.go = {
               enable = true;
-              package = pkgs.go_1_25;
+              package = pkgs.go;
             };
 
             env.GOTOOLCHAIN = lib.mkForce "local";

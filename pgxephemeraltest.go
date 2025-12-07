@@ -31,9 +31,10 @@ type Executor interface {
 
 // TB is the interface common to testing.T, testing.B, and testing.F.
 //
-// Copied from the testing package.
+// It copied from the testing package.
 //
 //nolint:interfacebloat // copied from testing package.
+//go:generate mockgen -destination=mock_tb_test.go -package pgxephemeraltest_test segfaultmedaddy.com/pgxephemeraltest TB
 type TB interface {
 	Cleanup(func())
 	Error(args ...any)
