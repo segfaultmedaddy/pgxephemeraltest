@@ -3,12 +3,13 @@ package pgxephemeraltest_test
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,17 +18,20 @@ import (
 
 var _ pgxephemeraltest.Migrator = (*migrator)(nil)
 
+const kvSchema = `CREATE TABLE IF NOT EXISTS kv (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL
+);`
+
 // kvMigrator is a default migrator for tests.
 func createKVMigrator() *migrator {
 	return &migrator{
-		schema: `CREATE TABLE IF NOT EXISTS kv (
-		  key TEXT PRIMARY KEY NOT NULL,
-		  value TEXT NOT NULL
-		);`,
+		schema: kvSchema,
 
 		// provide a random hash so we create independent migrations in each parallel
 		// test.
-		hash: "kv" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		//#nosec:G404
+		hash: "kv" + strconv.FormatInt(rand.Int64(), 10),
 	}
 }
 
@@ -41,6 +45,16 @@ func mkConnString(t *testing.T) string {
 	require.NotEmpty(t, connString, "TEST_DATABASE_URL environment variable not set")
 
 	return connString
+}
+
+// mkPoolConfig returns a pool config for testing.
+func mkPoolConfig(t *testing.T) *pgxpool.Config {
+	t.Helper()
+
+	config, err := pgxpool.ParseConfig(mkConnString(t))
+	require.NoError(t, err)
+
+	return config
 }
 
 type migrator struct {
@@ -67,6 +81,8 @@ func assertKVRows(t *testing.T, rows pgx.Rows, expected []kv) {
 	count := 0
 	actual := make([]kv, 0, len(expected))
 
+	defer rows.Close()
+
 	for rows.Next() {
 		var k, v string
 
@@ -79,7 +95,4 @@ func assertKVRows(t *testing.T, rows pgx.Rows, expected []kv) {
 
 	assert.Equal(t, len(expected), count)
 	assert.Equal(t, expected, actual)
-
-	// Close the rows to release resources.
-	rows.Close()
 }

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -18,10 +17,7 @@ import (
 func TestNewPoolFactory(t *testing.T) {
 	t.Parallel()
 
-	config, err := pgxpool.ParseConfig(mkConnString(t))
-	require.NoError(t, err)
-
-	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, createKVMigrator())
+	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), mkPoolConfig(t), createKVMigrator())
 	require.NoError(t, err)
 
 	assert.NotNil(t, f)
@@ -45,8 +41,7 @@ func TestNewPoolFactoryFromConnString(t *testing.T) {
 func TestPoolFactory(t *testing.T) {
 	t.Parallel()
 
-	config, err := pgxpool.ParseConfig(mkConnString(t))
-	require.NoError(t, err)
+	config := mkPoolConfig(t)
 
 	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, createKVMigrator())
 	require.NoError(t, err)
@@ -244,13 +239,33 @@ func TestPoolFactory_UniqueTemplate(t *testing.T) {
 			m2 = createKVMigrator()
 		)
 
-		config, err := pgxpool.ParseConfig(mkConnString(t))
-		require.NoError(t, err)
+		config := mkPoolConfig(t)
 
 		f1, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, m1)
 		require.NoError(t, err)
 
 		f2, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, m2)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, f1.Template(), f2.Template())
+	})
+
+	t.Run("it should create unique templates for different users", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			m  = createKVMigrator()
+			c1 = mkPoolConfig(t)
+			c2 = mkPoolConfig(t)
+		)
+
+		c1.ConnConfig.User = "u1"
+		c2.ConnConfig.User = "u2"
+
+		f1, err := pgxephemeraltest.NewPoolFactory(t.Context(), c1, m)
+		require.NoError(t, err)
+
+		f2, err := pgxephemeraltest.NewPoolFactory(t.Context(), c2, m)
 		require.NoError(t, err)
 
 		assert.NotEqual(t, f1.Template(), f2.Template())

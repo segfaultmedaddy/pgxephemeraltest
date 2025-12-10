@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,6 +17,7 @@ import (
 // rolled back and the database state is reset to its initial state.
 type TxFactory struct {
 	executor Executor
+	options  factoryOptions
 }
 
 // NewTxFactory creates a new TxFactory instance.
@@ -32,7 +32,7 @@ func NewTxFactory(executor Executor, opts ...FactoryOption) *TxFactory {
 
 	options.defaults()
 
-	return &TxFactory{executor: executor}
+	return &TxFactory{executor: executor, options: options}
 }
 
 // NewTxFactoryFromConnString creates a new connection pool from the provided connection string and
@@ -64,12 +64,13 @@ func (f TxFactory) Tx(tb TB) pgx.Tx {
 	tb.Helper()
 
 	tx, err := f.executor.Begin(tb.Context())
+
 	assertNoError(tb, err, "pgxephemeraltest: failed to start transaction")
 
 	tb.Logf("pgxephemeraltest: spun up new transaction for test")
 
 	tb.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), f.options.cleanupTimeout)
 		defer cancel()
 
 		if err = tx.Rollback(ctx); err != nil {

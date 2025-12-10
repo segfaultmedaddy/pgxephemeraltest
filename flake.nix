@@ -66,23 +66,8 @@
               govulncheck
               golangci-lint
               mockgen
+              just
             ];
-
-            scripts = {
-              lint = {
-                exec = ''
-                  modernize ./...
-                  govulncheck ./...
-                  golangci-lint run ./...
-                '';
-              };
-              lint-fix = {
-                exec = ''
-                  modernize --fix ./...
-                  golangci-lint run --fix ./...
-                '';
-              };
-            };
 
             git-hooks = {
               hooks = {
@@ -101,7 +86,7 @@
                   name = "lint";
                   description = "Go Lint";
                   entry = ''
-                    lint
+                    just lint
                   '';
                   pass_filenames = false;
                 };
@@ -137,6 +122,9 @@
                 };
 
                 initialScript = ''
+                  CREATE USER u1 SUPERUSER PASSWORD 'u1';
+                  CREATE USER u2 SUPERUSER PASSWORD 'u2';
+
                   CREATE USER ${user} SUPERUSER PASSWORD '${password}';
                   CREATE DATABASE ${db} OWNER ${user};
                 '';
