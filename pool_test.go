@@ -260,7 +260,9 @@ func TestPoolFactory_UniqueTemplate(t *testing.T) {
 		)
 
 		c1.ConnConfig.User = "u1"
+		c1.ConnConfig.Password = "u1"
 		c2.ConnConfig.User = "u2"
+		c2.ConnConfig.Password = "u2"
 
 		f1, err := pgxephemeraltest.NewPoolFactory(t.Context(), c1, m)
 		require.NoError(t, err)

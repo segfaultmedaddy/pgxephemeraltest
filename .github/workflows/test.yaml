@@ -50,6 +50,4 @@ jobs:
           PGPASSWORD=test psql -h localhost -p 6543 -U test -d test -c "CREATE USER u1 WITH PASSWORD 'u1';"
           PGPASSWORD=test psql -h localhost -p 6543 -U test -d test -c "CREATE USER u2 WITH PASSWORD 'u2';"
       - name: Test
-        env:
-          TEST_DATABASE_URL: postgres://test:test@localhost:5432/test
         run: nix develop --no-pure-eval --command just test-ci
