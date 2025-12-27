@@ -34,7 +34,7 @@ type Executor interface {
 // It copied from the testing package.
 //
 //nolint:interfacebloat // copied from testing package.
-//go:generate mockgen -destination=mock_tb_test.go -package pgxephemeraltest_test segfaultmedaddy.com/pgxephemeraltest TB
+//go:generate mockgen -destination=mock_tb_test.go -package pgxephemeraltest_test go.segfaultmedaddy.com/pgxephemeraltest TB
 type TB interface {
 	Cleanup(func())
 	Error(args ...any)
