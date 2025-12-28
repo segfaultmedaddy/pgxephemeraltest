@@ -12,6 +12,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest"
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
 )
 
 func TestNewPoolFactory(t *testing.T) {
@@ -52,7 +53,7 @@ func TestPoolFactory(t *testing.T) {
 		var (
 			database string
 			ctrl     = gomock.NewController(t)
-			tt       = NewMockTB(ctrl)
+			tt       = internaltesting.NewMockTB(ctrl)
 		)
 
 		var cleanup func()
@@ -100,7 +101,7 @@ func TestPoolFactory(t *testing.T) {
 		var (
 			database string
 			ctrl     = gomock.NewController(t)
-			tt       = NewMockTB(ctrl)
+			tt       = internaltesting.NewMockTB(ctrl)
 		)
 
 		var cleanup func()

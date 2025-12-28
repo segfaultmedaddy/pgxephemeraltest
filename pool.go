@@ -15,6 +15,8 @@ import (
 	"github.com/docker/docker/pkg/namesgenerator"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
 )
 
 const TemplatePrefix = "pgxephemeraltest_template_"
@@ -123,7 +125,7 @@ func (f *PoolFactory) Template() string { return f.template }
 // Lifetime of the pool is managed by the tb, the pool is closed when
 // the test is done. If a test is failed the database is left intact for debugging,
 // otherwise it is dropped.
-func (f *PoolFactory) Pool(tb TB) *pgxpool.Pool {
+func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	tb.Helper()
 
 	ctx := tb.Context()

@@ -7,6 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
 )
 
 // TxFactory creates transactions for testing purposes.
@@ -59,23 +61,30 @@ func NewTxFactoryFromConnString(
 // the transaction is automatically rolled back on cleanup and the database
 // state is reset to its initial state.
 //
-// If it fails to start a new transaction it will panic.
-func (f TxFactory) Tx(tb TB) pgx.Tx {
+// If it fails to start a new transaction a panic is raised.
+func (f TxFactory) Tx(tb internaltesting.TB) pgx.Tx {
 	tb.Helper()
 
-	tx, err := f.executor.Begin(tb.Context())
-
+	//nolint:exhaustruct
+	tx, err := f.executor.BeginTx(tb.Context(), pgx.TxOptions{
+		// ReadCommitted is the default isolation level in Postgres, however,
+		// it might be overridden by the database configuration. We need to ensure
+		// that the transaction isolation level doesn't allow dirty writes.
+		IsoLevel: pgx.ReadCommitted,
+	})
 	assertNoError(tb, err, "pgxephemeraltest: failed to start transaction")
-
-	tb.Logf("pgxephemeraltest: spun up new transaction for test")
 
 	tb.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), f.options.cleanupTimeout)
 		defer cancel()
 
+		// It is important to pass a fresh context here as the tb.Context()
+		// is canceled when the test is finished.
 		if err = tx.Rollback(ctx); err != nil {
 			if !errors.Is(err, pgx.ErrTxClosed) {
 				assertNoError(tb, err, "pgxephemeraltest: failed to cleanup transaction")
+			} else {
+				tb.Logf("pgxephemeraltest: transaction was already closed")
 			}
 		}
 	})

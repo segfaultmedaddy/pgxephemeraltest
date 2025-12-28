@@ -9,17 +9,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
 )
 
 var (
 	_ Executor = (*pgx.Conn)(nil)
-	_ Executor = (*pgxpool.Tx)(nil)
 	_ Executor = (*pgxpool.Pool)(nil)
 )
 
 var DefaultCleanupTimeout = time.Second * 15 //nolint:gochecknoglobals
 
-// Executor is an interface common to pgx.Conn, pgx.Tx and pgxpool.Pool.
+// Executor is an interface common to pgx.Conn and pgxpool.Pool.
 type Executor interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 	Query(context.Context, string, ...any) (pgx.Rows, error)
@@ -27,35 +28,7 @@ type Executor interface {
 	CopyFrom(context.Context, pgx.Identifier, []string, pgx.CopyFromSource) (int64, error)
 	SendBatch(context.Context, *pgx.Batch) pgx.BatchResults
 	Begin(context.Context) (pgx.Tx, error)
-}
-
-// TB is the interface common to testing.T, testing.B, and testing.F.
-//
-// It copied from the testing package.
-//
-//nolint:interfacebloat // copied from testing package.
-//go:generate mockgen -destination=mock_tb_test.go -package pgxephemeraltest_test go.segfaultmedaddy.com/pgxephemeraltest TB
-type TB interface {
-	Cleanup(func())
-	Error(args ...any)
-	Errorf(format string, args ...any)
-	Fail()
-	FailNow()
-	Failed() bool
-	Fatal(args ...any)
-	Fatalf(format string, args ...any)
-	Helper()
-	Log(args ...any)
-	Logf(format string, args ...any)
-	Name() string
-	Setenv(key, value string)
-	Chdir(dir string)
-	Skip(args ...any)
-	SkipNow()
-	Skipf(format string, args ...any)
-	Skipped() bool
-	TempDir() string
-	Context() context.Context
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
 
 // FactoryOption is an option to configure PoolFactory and TxFactory.
@@ -68,7 +41,7 @@ func WithCleanupTimeout(timeout time.Duration) func(*factoryOptions) {
 }
 
 // assertNoError is a helper function that asserts that an error is nil.
-func assertNoError(t TB, err error, m ...string) {
+func assertNoError(t internaltesting.TB, err error, m ...string) {
 	t.Helper()
 
 	if err != nil {
