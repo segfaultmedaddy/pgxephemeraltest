@@ -36,7 +36,7 @@ type FactoryOption func(*factoryOptions)
 
 // WithCleanupTimeout sets the timeout for cleaning up a database after
 // a test is complete.
-func WithCleanupTimeout(timeout time.Duration) func(*factoryOptions) {
+func WithCleanupTimeout(timeout time.Duration) FactoryOption {
 	return func(config *factoryOptions) { config.cleanupTimeout = timeout }
 }
 

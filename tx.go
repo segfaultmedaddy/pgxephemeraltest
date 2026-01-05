@@ -80,7 +80,7 @@ func (f TxFactory) Tx(tb internaltesting.TB) pgx.Tx {
 
 		// It is important to pass a fresh context here as the tb.Context()
 		// is canceled when the test is finished.
-		if err = tx.Rollback(ctx); err != nil {
+		if err := tx.Rollback(ctx); err != nil {
 			if !errors.Is(err, pgx.ErrTxClosed) {
 				assertNoError(tb, err, "pgxephemeraltest: failed to cleanup transaction")
 			} else {

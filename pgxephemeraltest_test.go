@@ -1,98 +1,55 @@
 package pgxephemeraltest_test
 
 import (
-	"context"
-	"fmt"
-	"math/rand/v2"
-	"os"
-	"strconv"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest"
 )
 
-var _ pgxephemeraltest.Migrator = (*migrator)(nil)
+// BenchmarkTx_NewInstance assesses the performance of initialization of a new
+// testing transaction.
+func BenchmarkTx_NewInstance(b *testing.B) {
+	config := mkPoolConfig(b)
+	config.MaxConns = int32(b.N)
 
-const kvSchema = `CREATE TABLE IF NOT EXISTS kv (
-  key TEXT PRIMARY KEY NOT NULL,
-  value TEXT NOT NULL
-);`
+	pool, err := pgxpool.NewWithConfig(b.Context(), config)
+	require.NoError(b, err)
 
-// kvMigrator is a default migrator for tests.
-func createKVMigrator() *migrator {
-	return &migrator{
-		schema: kvSchema,
+	b.Cleanup(pool.Close)
 
-		// provide a random hash so we create independent migrations in each parallel
-		// test.
-		//#nosec:G404
-		hash: "kv" + strconv.FormatInt(rand.Int64(), 10),
+	f := pgxephemeraltest.NewTxFactory(pool)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = f.Tx(b)
+		}
+	})
+}
+
+// BenchmarkPool_Template assesses the performance of the pool factory creation,
+// that includes connection to the database for maintenance, initializing
+// the template database.
+func BenchmarkPool_Template(b *testing.B) {
+	for b.Loop() {
+		_, err := pgxephemeraltest.NewPoolFactory(b.Context(), mkPoolConfig(b), createKVMigrator())
+		require.NoError(b, err)
 	}
 }
 
-// mkConnString returns the connection string for testing.
-//
-// It expects TEST_DATABASE_URL environment variable to be set.
-func mkConnString(t *testing.T) string {
-	t.Helper()
+// BenchmarkPool_NewInstance assesses the performance of creating a new instance of
+// pool with ignoring the template database creation time.
+func BenchmarkPool_NewInstance(b *testing.B) {
+	f, err := pgxephemeraltest.NewPoolFactory(b.Context(), mkPoolConfig(b), createKVMigrator())
+	require.NoError(b, err)
 
-	connString := os.Getenv("TEST_DATABASE_URL")
-	require.NotEmpty(t, connString, "TEST_DATABASE_URL environment variable not set")
-
-	return connString
-}
-
-// mkPoolConfig returns a pool config for testing.
-func mkPoolConfig(t *testing.T) *pgxpool.Config {
-	t.Helper()
-
-	config, err := pgxpool.ParseConfig(mkConnString(t))
-	require.NoError(t, err)
-
-	return config
-}
-
-type migrator struct {
-	schema string
-	hash   string
-}
-
-func (m *migrator) Hash() string { return m.hash }
-func (m *migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
-	_, err := conn.Exec(ctx, m.schema)
-	if err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
-	}
-
-	return nil
-}
-
-type kv struct{ k, v string }
-
-// assertKVRows asserts that the rows match the expected values.
-func assertKVRows(t *testing.T, rows pgx.Rows, expected []kv) {
-	t.Helper()
-
-	count := 0
-	actual := make([]kv, 0, len(expected))
-
-	defer rows.Close()
-
-	for rows.Next() {
-		var k, v string
-
-		err := rows.Scan(&k, &v)
-		require.NoError(t, err)
-
-		actual = append(actual, kv{k, v})
-		count++
-	}
-
-	assert.Equal(t, len(expected), count)
-	assert.Equal(t, expected, actual)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = f.Pool(b)
+		}
+	})
 }

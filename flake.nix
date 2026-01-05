@@ -119,6 +119,7 @@
                   synchronous_commit = "off";
                   log_statement = "all";
                   shared_buffers = "128MB";
+                  max_connections = "10000";
                 };
 
                 initialScript = ''

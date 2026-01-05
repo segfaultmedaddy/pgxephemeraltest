@@ -281,7 +281,7 @@ func (f *PoolFactory) mkTemplate(ctx context.Context, migrator Migrator, user, t
 	// It is safe to check only if the database is marked as a template, since marking
 	// it as a template is the last step in the process.
 	var doesTemplateExists bool
-	if err := mc.QueryRow(ctx, "SELECT exists(SELECT 1 FROM pg_database WHERE datname = $1)",
+	if err := mc.QueryRow(ctx, "SELECT exists(SELECT 1 FROM pg_database WHERE datname = $1 AND datistemplate = true)",
 		template).Scan(&doesTemplateExists); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to check if template exists: %w", err)
 	}
@@ -290,8 +290,8 @@ func (f *PoolFactory) mkTemplate(ctx context.Context, migrator Migrator, user, t
 		return nil // Template already exists
 	}
 
-	// If template doesn't exist, we could fail at marking it as a template, but
-	// we could still succeed at creating it. Let's try to clean it up.
+	// If template doesn't exist, it could fail at marking it as a template, yet
+	// succeed at creating it. Let's try to clean it up.
 	if _, err := mc.Exec(ctx, strings.Join([]string{
 		"DROP DATABASE IF EXISTS",
 		pgx.Identifier{template}.Sanitize(),
