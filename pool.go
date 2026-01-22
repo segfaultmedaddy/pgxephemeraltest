@@ -6,10 +6,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"hash/fnv"
-	"log"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/docker/pkg/namesgenerator"
@@ -56,11 +54,9 @@ type Migrator interface {
 // Each created database is prepared with applied migration provided by running
 // provided migrator.
 type PoolFactory struct {
-	mc             *pgx.Conn // protected by mu
 	config         *pgxpool.Config
 	template       string
 	cleanupTimeout time.Duration
-	mu             sync.Mutex
 }
 
 // NewPoolFactory creates a new PoolFactory instance.
@@ -129,10 +125,14 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	tb.Helper()
 
 	ctx := tb.Context()
+
+	mc, err := f.newMaintenanceConn(ctx)
+	assertNoError(tb, err, "pgxephemeraltest: failed to get maintenance connection")
+
 	db, err := randomName(6)
 	assertNoError(tb, err, "pgxephemeraltest: failed to generate ephemeral database name")
 
-	err = f.createDB(ctx, db)
+	err = f.createDB(ctx, mc, db)
 	assertNoError(tb, err, "pgxephemeraltest: failed to create ephemeral database")
 
 	pool, err := f.pool(ctx, db)
@@ -143,6 +143,11 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	tb.Cleanup(func() {
 		pool.Close()
 
+		ctx, cancel := context.WithTimeout(context.Background(), f.cleanupTimeout)
+		defer cancel()
+
+		defer mc.Close(ctx)
+
 		// Leave the database intact if the test has failed for debugging
 		if tb.Failed() {
 			tb.Logf("pgxephemeraltest: failed test, leaving database intact: %s", db)
@@ -150,7 +155,7 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 			return
 		}
 
-		err = f.dropDB(db)
+		err = f.dropDB(ctx, mc, db)
 		if err != nil {
 			tb.Logf("pgxephemeraltest: failed to drop ephemeral database: %s - %v", db, err)
 		} else {
@@ -176,10 +181,11 @@ func (f *PoolFactory) init(ctx context.Context, migrator Migrator) (err error) {
 	template := TemplatePrefix + strconv.FormatUint(h.Sum64(), 10)
 	f.template = template
 
-	mc, err := f.mkMaintenanceConn(ctx)
+	mc, err := f.newMaintenanceConn(ctx)
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to connect to database: %w", err)
 	}
+	defer mc.Close(ctx)
 
 	// Linearize the creation of database template across multiple processes, since
 	// it is a shared resource and can cause conflicts, when trying to initialize
@@ -217,33 +223,17 @@ func (f *PoolFactory) newConn(ctx context.Context, db string) (*pgx.Conn, error)
 	return conn, nil
 }
 
-// mkMaintenanceConn returns a maintenance connection.
+// newMaintenanceConn creates a new maintenance connection.
 //
 // Maintenance connection is used to manage ephemeral databases lifecycle.
-func (f *PoolFactory) mkMaintenanceConn(ctx context.Context) (*pgx.Conn, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	if f.mc != nil && !f.mc.IsClosed() {
-		// Check if the existing connection is still alive
-		if err := f.mc.Ping(ctx); err == nil {
-			return f.mc, nil
-		}
-
-		// Connection is dead, close it
-		f.mc.Close(ctx)
-		f.mc = nil
-	}
-
-	// Create a new maintenance connection
-	newConn, err := f.newConn(ctx, "")
+// The caller is responsible for closing the connection when done.
+func (f *PoolFactory) newMaintenanceConn(ctx context.Context) (*pgx.Conn, error) {
+	conn, err := f.newConn(ctx, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire maintenance connection: %w", err)
 	}
 
-	f.mc = newConn
-
-	return f.mc, nil
+	return conn, nil
 }
 
 // pool creates a new pool connected to the db ephemeral database.
@@ -273,10 +263,11 @@ func (f *PoolFactory) pool(ctx context.Context, db string) (*pgxpool.Pool, error
 // mkTemplate is not thread-safe; attempting to run it concurrently will result in
 // connection lock (pgx busy conn).
 func (f *PoolFactory) mkTemplate(ctx context.Context, migrator Migrator, user, template string) error {
-	mc, err := f.mkMaintenanceConn(ctx)
+	mc, err := f.newMaintenanceConn(ctx)
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to get maintenance connection: %w", err)
 	}
+	defer mc.Close(ctx)
 
 	// It is safe to check only if the database is marked as a template, since marking
 	// it as a template is the last step in the process.
@@ -327,14 +318,8 @@ func (f *PoolFactory) mkTemplate(ctx context.Context, migrator Migrator, user, t
 }
 
 // createDB creates a new db ephemeral database for testing.
-func (f *PoolFactory) createDB(ctx context.Context, db string) error {
-	mc, err := f.mkMaintenanceConn(ctx)
-	if err != nil {
-		return fmt.Errorf("pgxephemeraltest: failed to get maintenance connection: %w", err)
-	}
-
-	f.mu.Lock()
-	_, err = mc.Exec(ctx, strings.Join([]string{
+func (f *PoolFactory) createDB(ctx context.Context, mc *pgx.Conn, db string) error {
+	_, err := mc.Exec(ctx, strings.Join([]string{
 		"CREATE DATABASE",
 		pgx.Identifier{db}.Sanitize(),
 		"TEMPLATE",
@@ -342,8 +327,6 @@ func (f *PoolFactory) createDB(ctx context.Context, db string) error {
 		"OWNER",
 		pgx.Identifier{f.config.ConnConfig.User}.Sanitize(),
 	}, " "))
-	f.mu.Unlock()
-
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to copy database template: %w", err)
 	}
@@ -352,23 +335,10 @@ func (f *PoolFactory) createDB(ctx context.Context, db string) error {
 }
 
 // dropDB drops the db ephemeral database after testing.
-func (f *PoolFactory) dropDB(db string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), f.cleanupTimeout)
-	defer cancel()
-
-	mc, err := f.mkMaintenanceConn(ctx)
+func (f *PoolFactory) dropDB(ctx context.Context, mc *pgx.Conn, db string) error {
+	_, err := mc.Exec(ctx, strings.Join([]string{"DROP DATABASE", pgx.Identifier{db}.Sanitize()}, " "))
 	if err != nil {
-		return fmt.Errorf("pgxephemeraltest: failed create maintenance connection: %w", err)
-	}
-
-	f.mu.Lock()
-
-	_, err = mc.Exec(ctx, strings.Join([]string{"DROP DATABASE", pgx.Identifier{db}.Sanitize()}, " "))
-
-	f.mu.Unlock()
-
-	if err != nil {
-		log.Printf("pgxephemeraltest: failed to drop database %s: %v", db, err)
+		return fmt.Errorf("pgxephemeraltest: failed to drop database %s: %w", db, err)
 	}
 
 	return nil
