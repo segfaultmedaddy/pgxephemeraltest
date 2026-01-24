@@ -29,7 +29,7 @@ jobs:
             ${{ runner.os }}-go-
       - name: Load nix environment into PATH
         shell: devenv shell bash -- -e {0}
-        run: bash -c 'eval "$(nix print-dev-env --no-pure-eval)" && echo "PATH=$PATH" >> $GITHUB_ENV'
+        run: bash -c 'eval "$(devenv print-dev-env)" && echo "PATH=$PATH" >> $GITHUB_ENV'
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:
