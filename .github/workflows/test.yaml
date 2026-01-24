@@ -24,9 +24,9 @@ jobs:
           path: |
             ~/.cache/go-build
             .devenv/state/go
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-v1-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-v1-
       - name: Load nix environment into PATH
         shell: devenv shell bash -- -e {0}
         run: bash -c 'eval "$(devenv print-dev-env)" && echo "PATH=$PATH" >> $GITHUB_ENV'
@@ -37,4 +37,6 @@ jobs:
           working-directory: .
       - name: Test
         shell: devenv shell bash -- -e {0}
+        env:
+          GOCACHE: ~/.cache/go-build
         run: devenv tasks run test-ci
