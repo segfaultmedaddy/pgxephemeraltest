@@ -9,17 +9,6 @@ jobs:
     permissions:
       id-token: "write"
       contents: "read"
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: test
-          POSTGRES_USER: test
-          POSTGRES_DB: test
-        options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
-        ports:
-          - 6543:5432
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v19
@@ -27,8 +16,8 @@ jobs:
         with:
           name: devenv
           skipPush: true
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
       - uses: DeterminateSystems/flake-checker-action@v12
+      - run: nix profile add nixpkgs#devenv
       - name: Go Cache
         uses: actions/cache@v4
         with:
@@ -39,15 +28,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
       - name: Load nix environment into PATH
+        shell: devenv shell bash -- -e {0}
         run: bash -c 'eval "$(nix print-dev-env --no-pure-eval)" && echo "PATH=$PATH" >> $GITHUB_ENV'
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:
           install-mode: "none"
           working-directory: .
-      - name: Create test users
-        run: |
-          PGPASSWORD=test psql -h localhost -p 6543 -U test -d test -c "CREATE USER u1 WITH PASSWORD 'u1';"
-          PGPASSWORD=test psql -h localhost -p 6543 -U test -d test -c "CREATE USER u2 WITH PASSWORD 'u2';"
       - name: Test
-        run: nix develop --no-pure-eval --command just test-ci
+        shell: devenv shell bash -- -e {0}
+        run: devenv tasks run test-ci

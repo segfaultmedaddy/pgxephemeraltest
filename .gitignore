@@ -1,10 +1,14 @@
 # MacOS
 .DS_Store
 
-# Flake & Direnv
-.devenv
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
 .direnv
 .envrc.local
 
-# git-hooks generated
+# pre-commit
 .pre-commit-config.yaml
