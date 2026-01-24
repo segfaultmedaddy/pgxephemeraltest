@@ -22,7 +22,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/go-build
+            /home/runner/.cache/go-build
             .devenv/state/go
           key: ${{ runner.os }}-go-v1-${{ hashFiles('**/go.sum') }}
           restore-keys: |
@@ -38,5 +38,5 @@ jobs:
       - name: Test
         shell: devenv shell bash -- -e {0}
         env:
-          GOCACHE: ~/.cache/go-build
-        run: devenv tasks run test-ci
+          GOCACHE: /home/runner/.cache/go-build
+        run: devenv tasks run go:test-ci
