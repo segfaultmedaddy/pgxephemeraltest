@@ -13,7 +13,7 @@ import (
 // testing transaction.
 func BenchmarkTx_NewInstance(b *testing.B) {
 	config := mkPoolConfig(b)
-	config.MaxConns = int32(b.N)
+	config.MaxConns = int32(b.N) //#nosec
 
 	pool, err := pgxpool.NewWithConfig(b.Context(), config)
 	require.NoError(b, err)
