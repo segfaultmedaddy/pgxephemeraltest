@@ -23,6 +23,14 @@ const kvSchema = `CREATE TABLE IF NOT EXISTS kv (
   value TEXT NOT NULL
 );`
 
+// createNoopMigrator creates a migrator that applies no schema changes.
+func createNoopMigrator() *migrator {
+	return &migrator{
+		schema: "",
+		hash:   "noop",
+	}
+}
+
 // kvMigrator is a default migrator for tests.
 func createKVMigrator() *migrator {
 	return &migrator{
@@ -64,6 +72,10 @@ type migrator struct {
 
 func (m *migrator) Hash() string { return m.hash }
 func (m *migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
+	if m.schema == "" {
+		return nil
+	}
+
 	_, err := conn.Exec(ctx, m.schema)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %w", err)

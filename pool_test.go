@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -236,6 +237,35 @@ func TestPoolFactory_Parallel(t *testing.T) {
 			require.NoError(t, err)
 			assertKVRows(t, rows, []kv{{"key", expectedValue}})
 		})
+	}
+}
+
+func TestPoolFactory_NoopMigrator(t *testing.T) {
+	t.Parallel()
+
+	// Arrange
+	config := mkPoolConfig(t)
+
+	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, createNoopMigrator())
+	require.NoError(t, err)
+
+	// Act
+	p1 := f.Pool(t)
+	p2 := f.Pool(t)
+	p3 := f.Pool(t)
+
+	// Assert
+	databases := map[string]struct{}{
+		p1.Config().ConnConfig.Database: {},
+		p2.Config().ConnConfig.Database: {},
+		p3.Config().ConnConfig.Database: {},
+	}
+
+	assert.Len(t, databases, 3, "each Pool call should create a unique database")
+
+	for _, p := range []*pgxpool.Pool{p1, p2, p3} {
+		err := p.Ping(t.Context())
+		assert.NoError(t, err, "pool should be connected to a valid database")
 	}
 }
 
