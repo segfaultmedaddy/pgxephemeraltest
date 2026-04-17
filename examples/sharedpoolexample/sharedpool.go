@@ -18,8 +18,9 @@ var _ pgxephemeraltest.Migrator = (*migrator)(nil)
 var m migrator //nolint:gochecknoglobals
 
 var (
-	mu sync.RWMutex                  //nolint:gochecknoglobals
-	db *pgxephemeraltest.PoolFactory //nolint:gochecknoglobals
+	factory     *pgxephemeraltest.PoolFactory //nolint:gochecknoglobals
+	factoryOnce sync.Once                     //nolint:gochecknoglobals
+	errFactory  error                         //nolint:gochecknoglobals
 )
 
 // migrator applies test migrations and present here for example purposes.
@@ -48,37 +49,17 @@ func (migrator) Hash() string { return "shared" }
 func Pool(tb testing.TB) *pgxpool.Pool {
 	tb.Helper()
 
-	try := func() *pgxephemeraltest.PoolFactory {
-		mu.RLock()
-		defer mu.RUnlock()
-
-		return db
-	}
-
-	get := func() *pgxephemeraltest.PoolFactory {
-		// First check if the pool manager is already initialized...
-		if db := try(); db != nil {
-			return db
-		}
-
-		mu.Lock()
-		defer mu.Unlock()
-
-		var err error
-
-		// ...otherwise create a new one connected to TEST_DATABASE_URL instance...
-		db, err = pgxephemeraltest.NewPoolFactoryFromConnString(
+	factoryOnce.Do(func() {
+		factory, errFactory = pgxephemeraltest.NewPoolFactoryFromConnString(
 			tb.Context(),
 			os.Getenv("TEST_DATABASE_URL"),
 			m,
 		)
-		if err != nil {
-			tb.Fatal(err)
-		}
+	})
 
-		return db
+	if errFactory != nil {
+		tb.Fatal(errFactory)
 	}
 
-	// Finally return a new pool created from the pool factory.
-	return get().Pool(tb)
+	return factory.Pool(tb)
 }
