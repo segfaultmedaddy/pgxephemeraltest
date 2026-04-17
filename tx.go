@@ -26,8 +26,7 @@ type TxFactory struct {
 //
 // The provided database connection pool must be open and ready to use.
 func NewTxFactory(executor Executor, opts ...FactoryOption) *TxFactory {
-	//nolint:exhaustruct // defaults will initialize the missing fields.
-	options := factoryOptions{}
+	var options factoryOptions
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -65,13 +64,11 @@ func NewTxFactoryFromConnString(
 func (f TxFactory) Tx(tb internaltesting.TB) pgx.Tx {
 	tb.Helper()
 
-	//nolint:exhaustruct
-	tx, err := f.executor.BeginTx(tb.Context(), pgx.TxOptions{
-		// ReadCommitted is the default isolation level in Postgres, however,
-		// it might be overridden by the database configuration. We need to ensure
-		// that the transaction isolation level doesn't allow dirty writes.
-		IsoLevel: pgx.ReadCommitted,
-	})
+	// ReadCommitted is the default isolation level in Postgres, however,
+	// it might be overridden by the database configuration. We need to ensure
+	// that the transaction isolation level doesn't allow dirty writes.
+	//nolint:exhaustruct // only isolation level matters for tests.
+	tx, err := f.executor.BeginTx(tb.Context(), pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	assertNoError(tb, err, "pgxephemeraltest: failed to start transaction")
 
 	tb.Cleanup(func() {

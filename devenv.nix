@@ -36,7 +36,6 @@
     };
   };
 
-  # Tasks (migrated from Justfile)
   tasks = {
     "go:mod" = {
       exec = ''

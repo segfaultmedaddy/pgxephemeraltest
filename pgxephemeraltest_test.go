@@ -7,12 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest"
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/testutil"
 )
 
 // BenchmarkTx_NewInstance assesses the performance of initialization of a new
 // testing transaction.
 func BenchmarkTx_NewInstance(b *testing.B) {
-	config := mkPoolConfig(b)
+	config := testutil.PoolConfig(b)
 	config.MaxConns = int32(b.N) //#nosec
 
 	pool, err := pgxpool.NewWithConfig(b.Context(), config)
@@ -35,7 +36,7 @@ func BenchmarkTx_NewInstance(b *testing.B) {
 // the template database.
 func BenchmarkPool_Template(b *testing.B) {
 	for b.Loop() {
-		_, err := pgxephemeraltest.NewPoolFactory(b.Context(), mkPoolConfig(b), createKVMigrator())
+		_, err := pgxephemeraltest.NewPoolFactory(b.Context(), testutil.PoolConfig(b), testutil.NewKVMigrator())
 		require.NoError(b, err)
 	}
 }
@@ -43,7 +44,7 @@ func BenchmarkPool_Template(b *testing.B) {
 // BenchmarkPool_NewInstance assesses the performance of creating a new instance of
 // pool with ignoring the template database creation time.
 func BenchmarkPool_NewInstance(b *testing.B) {
-	f, err := pgxephemeraltest.NewPoolFactory(b.Context(), mkPoolConfig(b), createKVMigrator())
+	f, err := pgxephemeraltest.NewPoolFactory(b.Context(), testutil.PoolConfig(b), testutil.NewKVMigrator())
 	require.NoError(b, err)
 
 	b.ResetTimer()

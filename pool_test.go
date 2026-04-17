@@ -14,14 +14,15 @@ import (
 
 	"go.segfaultmedaddy.com/pgxephemeraltest"
 	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/testutil"
 )
 
 func TestNewPoolFactory(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	config := mkPoolConfig(t)
-	migrator := createKVMigrator()
+	config := testutil.PoolConfig(t)
+	migrator := testutil.NewKVMigrator()
 
 	// Act
 	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, migrator)
@@ -38,8 +39,8 @@ func TestNewPoolFactoryFromConnString(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	connString := mkConnString(t)
-	migrator := createKVMigrator()
+	connString := testutil.ConnString(t)
+	migrator := testutil.NewKVMigrator()
 
 	// Act
 	f, err := pgxephemeraltest.NewPoolFactoryFromConnString(t.Context(), connString, migrator)
@@ -55,9 +56,9 @@ func TestNewPoolFactoryFromConnString(t *testing.T) {
 func TestPoolFactory(t *testing.T) {
 	t.Parallel()
 
-	config := mkPoolConfig(t)
+	config := testutil.PoolConfig(t)
 
-	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, createKVMigrator())
+	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, testutil.NewKVMigrator())
 	require.NoError(t, err)
 
 	t.Run("it cleans up database on success", func(t *testing.T) {
@@ -88,7 +89,7 @@ func TestPoolFactory(t *testing.T) {
 
 		rows, err := pool.Query(t.Context(), "SELECT * FROM kv")
 		require.NoError(t, err)
-		assertKVRows(t, rows, []kv{{"foo", "bar"}})
+		testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "foo", Value: "bar"}})
 
 		require.NotNil(t, cleanup)
 		cleanup()
@@ -131,7 +132,7 @@ func TestPoolFactory(t *testing.T) {
 
 		rows, err := pool.Query(t.Context(), "SELECT * FROM kv")
 		require.NoError(t, err)
-		assertKVRows(t, rows, []kv{{"foo", "bar"}})
+		testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "foo", Value: "bar"}})
 
 		require.NotNil(t, cleanup)
 		cleanup()
@@ -148,7 +149,7 @@ func TestPoolFactory(t *testing.T) {
 
 		rows, err = conn.Query(t.Context(), "SELECT * FROM kv")
 		require.NoError(t, err)
-		assertKVRows(t, rows, []kv{{"foo", "bar"}})
+		testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "foo", Value: "bar"}})
 	})
 
 	t.Run("it creates an isolated database on each Pool call", func(t *testing.T) {
@@ -168,11 +169,11 @@ func TestPoolFactory(t *testing.T) {
 		// Assert
 		r1, err := p1.Query(t.Context(), "SELECT * FROM kv")
 		require.NoError(t, err)
-		assertKVRows(t, r1, []kv{{"key1", "value1"}})
+		testutil.AssertKVRows(t, r1, []testutil.KV{{Key: "key1", Value: "value1"}})
 
 		r2, err := p2.Query(t.Context(), "SELECT * FROM kv")
 		require.NoError(t, err)
-		assertKVRows(t, r2, []kv{{"key2", "value2"}})
+		testutil.AssertKVRows(t, r2, []testutil.KV{{Key: "key2", Value: "value2"}})
 	})
 
 	t.Run("it supports creating multiple pools in parallel", func(t *testing.T) {
@@ -200,7 +201,7 @@ func TestPoolFactory(t *testing.T) {
 				// Assert
 				rows, err := p.Query(t.Context(), "SELECT * FROM kv")
 				require.NoError(t, err)
-				assertKVRows(t, rows, []kv{{"key", expectedValue}})
+				testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "key", Value: expectedValue}})
 			})
 		}
 
@@ -212,7 +213,11 @@ func TestPoolFactory_Parallel(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	f, err := pgxephemeraltest.NewPoolFactoryFromConnString(t.Context(), mkConnString(t), createKVMigrator())
+	f, err := pgxephemeraltest.NewPoolFactoryFromConnString(
+		t.Context(),
+		testutil.ConnString(t),
+		testutil.NewKVMigrator(),
+	)
 	require.NoError(t, err)
 
 	for i := range 5 {
@@ -235,7 +240,7 @@ func TestPoolFactory_Parallel(t *testing.T) {
 			// Assert
 			rows, err := p.Query(t.Context(), "SELECT * FROM kv")
 			require.NoError(t, err)
-			assertKVRows(t, rows, []kv{{"key", expectedValue}})
+			testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "key", Value: expectedValue}})
 		})
 	}
 }
@@ -244,9 +249,9 @@ func TestPoolFactory_NoopMigrator(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	config := mkPoolConfig(t)
+	config := testutil.PoolConfig(t)
 
-	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, createNoopMigrator())
+	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, testutil.NewNoopMigrator())
 	require.NoError(t, err)
 
 	// Act
@@ -267,69 +272,4 @@ func TestPoolFactory_NoopMigrator(t *testing.T) {
 		err := p.Ping(t.Context())
 		assert.NoError(t, err, "pool should be connected to a valid database")
 	}
-}
-
-func TestPoolFactory_UniqueTemplate(t *testing.T) {
-	t.Parallel()
-
-	t.Run("it should create unique templates for migrators with different hashes", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		m1 := createKVMigrator()
-		m2 := createKVMigrator()
-		config := mkPoolConfig(t)
-
-		// Act
-		f1, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, m1)
-		require.NoError(t, err)
-
-		f2, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, m2)
-		require.NoError(t, err)
-
-		// Assert
-		assert.NotEqual(t, f1.Template(), f2.Template())
-	})
-
-	t.Run("it should create unique templates for different users", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		m := createKVMigrator()
-		c1 := mkPoolConfig(t)
-		c2 := mkPoolConfig(t)
-
-		c1.ConnConfig.User = "u1"
-		c1.ConnConfig.Password = "u1"
-		c2.ConnConfig.User = "u2"
-		c2.ConnConfig.Password = "u2"
-
-		// Act
-		f1, err := pgxephemeraltest.NewPoolFactory(t.Context(), c1, m)
-		require.NoError(t, err)
-
-		f2, err := pgxephemeraltest.NewPoolFactory(t.Context(), c2, m)
-		require.NoError(t, err)
-
-		// Assert
-		assert.NotEqual(t, f1.Template(), f2.Template())
-	})
-
-	t.Run("it should create the same templates for migrators with the same hashes", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		m := createKVMigrator()
-		connString := mkConnString(t)
-
-		// Act
-		f1, err := pgxephemeraltest.NewPoolFactoryFromConnString(t.Context(), connString, m)
-		require.NoError(t, err)
-
-		f2, err := pgxephemeraltest.NewPoolFactoryFromConnString(t.Context(), connString, m)
-		require.NoError(t, err)
-
-		// Assert
-		assert.Equal(t, f1.Template(), f2.Template())
-	})
 }

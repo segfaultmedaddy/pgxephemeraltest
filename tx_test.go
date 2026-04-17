@@ -10,13 +10,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest"
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/testutil"
 )
 
 func TestTxFactory(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	pf, err := pgxephemeraltest.NewPoolFactoryFromConnString(t.Context(), mkConnString(t), createKVMigrator())
+	pf, err := pgxephemeraltest.NewPoolFactoryFromConnString(
+		t.Context(),
+		testutil.ConnString(t),
+		testutil.NewKVMigrator(),
+	)
 	require.NoError(t, err)
 
 	txf := pgxephemeraltest.NewTxFactory(pf.Pool(t))
@@ -41,11 +46,11 @@ func TestTxFactory(t *testing.T) {
 		// Assert
 		r1, err := tx1.Query(t.Context(), "SELECT * FROM kv")
 		require.NoError(t, err)
-		assertKVRows(t, r1, []kv{{k1, v1}})
+		testutil.AssertKVRows(t, r1, []testutil.KV{{Key: k1, Value: v1}})
 
 		r2, err := tx2.Query(t.Context(), "SELECT * FROM kv")
 		require.NoError(t, err)
-		assertKVRows(t, r2, []kv{{k2, v2}})
+		testutil.AssertKVRows(t, r2, []testutil.KV{{Key: k2, Value: v2}})
 	})
 }
 
@@ -53,7 +58,7 @@ func TestTxFactory_Parallel(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	p, err := pgxpool.New(t.Context(), mkConnString(t))
+	p, err := pgxpool.New(t.Context(), testutil.ConnString(t))
 	require.NoError(t, err)
 	t.Cleanup(p.Close)
 
@@ -67,7 +72,7 @@ func TestTxFactory_Parallel(t *testing.T) {
 			tx := f.Tx(t)
 			expectedValue := strconv.Itoa(i)
 
-			_, err := tx.Exec(t.Context(), kvSchema)
+			_, err := tx.Exec(t.Context(), testutil.KVSchema)
 			require.NoError(t, err)
 
 			// Act
@@ -82,7 +87,7 @@ func TestTxFactory_Parallel(t *testing.T) {
 			// Assert
 			rows, err := tx.Query(t.Context(), "SELECT * FROM kv")
 			require.NoError(t, err)
-			assertKVRows(t, rows, []kv{{"key", expectedValue}})
+			testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "key", Value: expectedValue}})
 		})
 	}
 }
