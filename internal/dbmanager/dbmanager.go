@@ -3,6 +3,7 @@ package dbmanager
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"strconv"
@@ -80,7 +81,19 @@ func (f *DBManager) Init(ctx context.Context, migrator Migrator, tpl string) (er
 		return fmt.Errorf("pgxephemeraltest: failed to take lock: %w", err)
 	}
 
-	defer func() { err = releaseLock(context.WithoutCancel(ctx)) }()
+	defer func() {
+		releaseErr := releaseLock(context.WithoutCancel(ctx))
+		if releaseErr == nil {
+			return
+		}
+
+		if err == nil {
+			err = releaseErr
+			return
+		}
+
+		err = errors.Join(err, releaseErr)
+	}()
 
 	if err := f.mkTemplate(ctx, migrator, f.config.ConnConfig.User, tpl); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to create database template: %w", err)
@@ -116,6 +129,10 @@ func (f *DBManager) CreateDB(ctx context.Context, tpl string, db string) (string
 
 // DropDB drops the db ephemeral database after testing.
 func (f *DBManager) DropDB(ctx context.Context, db string, isTemplate bool) error {
+	if !strings.HasPrefix(db, DatabasePrefix) && !strings.HasPrefix(db, TemplatePrefix) {
+		return fmt.Errorf("pgxephemeraltest: refusing to drop unmanaged database %q", db)
+	}
+
 	mc, err := f.newMaintenanceConn(ctx)
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to acquire maintenance connection: %w", err)
@@ -203,6 +220,7 @@ func (f *DBManager) ListDBs(ctx context.Context) ([]DBInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pgxephemeraltest: failed to list databases: %w", err)
 	}
+	defer rows.Close()
 
 	var dbs []DBInfo
 
@@ -213,6 +231,10 @@ func (f *DBManager) ListDBs(ctx context.Context) ([]DBInfo, error) {
 		}
 
 		dbs = append(dbs, db)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("pgxephemeraltest: failed while iterating databases: %w", err)
 	}
 
 	return dbs, nil

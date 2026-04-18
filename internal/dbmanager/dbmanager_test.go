@@ -141,6 +141,14 @@ func TestDBManager(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "refusing to drop unmanaged database")
 	})
+
+	t.Run("it rejects unmanaged database name for single drop", func(t *testing.T) {
+		t.Parallel()
+
+		err = m.DropDB(ctx, "postgres", false)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "refusing to drop unmanaged database")
+	})
 }
 
 func requireConnect(tb testing.TB, config *pgxpool.Config, db string) *pgx.Conn {
