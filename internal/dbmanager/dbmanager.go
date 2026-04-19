@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -128,7 +129,7 @@ func (f *DBManager) CreateDB(ctx context.Context, tpl string, db string) (string
 }
 
 // DropDB drops the db ephemeral database after testing.
-func (f *DBManager) DropDB(ctx context.Context, db string, isTemplate bool) error {
+func (f *DBManager) DropDB(ctx context.Context, db string) error {
 	if !strings.HasPrefix(db, DatabasePrefix) && !strings.HasPrefix(db, TemplatePrefix) {
 		return fmt.Errorf("pgxephemeraltest: refusing to drop unmanaged database %q", db)
 	}
@@ -139,14 +140,12 @@ func (f *DBManager) DropDB(ctx context.Context, db string, isTemplate bool) erro
 	}
 	defer mc.Close(ctx)
 
-	if isTemplate {
-		if _, err := mc.Exec(
-			ctx,
-			"UPDATE pg_database SET datistemplate = false WHERE datname = $1",
-			db,
-		); err != nil {
-			return fmt.Errorf("pgxephemeraltest: failed to unset template flag: %w", err)
-		}
+	if _, err := mc.Exec(
+		ctx,
+		"UPDATE pg_database SET datistemplate = false WHERE datname = $1 AND datistemplate = true",
+		db,
+	); err != nil {
+		return fmt.Errorf("pgxephemeraltest: failed to unset template flag: %w", err)
 	}
 
 	if _, err := mc.Exec(
@@ -160,12 +159,38 @@ func (f *DBManager) DropDB(ctx context.Context, db string, isTemplate bool) erro
 }
 
 func (f *DBManager) DropDBs(ctx context.Context, dbs []string) error {
-	for _, db := range dbs {
-		if strings.HasPrefix(db, DatabasePrefix) || strings.HasPrefix(db, TemplatePrefix) {
+	if len(dbs) == 0 {
+		return nil
+	}
+
+	for _, dbName := range dbs {
+		if strings.HasPrefix(dbName, DatabasePrefix) || strings.HasPrefix(dbName, TemplatePrefix) {
 			continue
 		}
 
-		return fmt.Errorf("pgxephemeraltest: refusing to drop unmanaged database %q", db)
+		return fmt.Errorf("pgxephemeraltest: refusing to drop unmanaged database %q", dbName)
+	}
+
+	listedKnownDBs, err := f.ListDBs(ctx)
+	if err != nil {
+		return fmt.Errorf("pgxephemeraltest: failed to verify databases before drop: %w", err)
+	}
+
+	availableDBs := make(map[string]DBInfo, len(listedKnownDBs))
+	for _, db := range listedKnownDBs {
+		availableDBs[db.Name] = db
+	}
+
+	templates := make([]string, 0, len(dbs))
+	for _, dbName := range dbs {
+		info, ok := availableDBs[dbName]
+		if !ok {
+			return fmt.Errorf("pgxephemeraltest: database %q not found", dbName)
+		}
+
+		if info.IsTemplate {
+			templates = append(templates, dbName)
+		}
 	}
 
 	mc, err := f.newMaintenanceConn(ctx)
@@ -174,26 +199,28 @@ func (f *DBManager) DropDBs(ctx context.Context, dbs []string) error {
 	}
 	defer mc.Close(ctx)
 
-	if len(dbs) == 0 {
-		return nil
+	if len(templates) > 0 {
+		for chunk := range slices.Chunk(templates, 256) {
+			if _, err := mc.Exec(
+				ctx,
+				"UPDATE pg_database SET datistemplate = false WHERE datname = ANY($1)",
+				chunk,
+			); err != nil {
+				return fmt.Errorf("pgxephemeraltest: failed to unset template flag: %w", err)
+			}
+		}
 	}
 
-	if _, err := mc.Exec(
-		ctx,
-		"UPDATE pg_database SET datistemplate = false WHERE datname = ANY($1)",
-		dbs,
-	); err != nil {
-		return fmt.Errorf("pgxephemeraltest: failed to unset template flag: %w", err)
-	}
+	for chunk := range slices.Chunk(dbs, 256) {
+		var b pgx.Batch
+		for _, dbName := range chunk {
+			b.Queue(strings.Join([]string{"DROP DATABASE", pgx.Identifier{dbName}.Sanitize()}, " "))
+		}
 
-	var b pgx.Batch
-	for _, name := range dbs {
-		b.Queue(strings.Join([]string{"DROP DATABASE", pgx.Identifier{name}.Sanitize()}, " "))
-	}
-
-	result := mc.SendBatch(ctx, &b)
-	if err := result.Close(); err != nil {
-		return fmt.Errorf("pgxephemeraltest: failed to close batch results: %w", err)
+		result := mc.SendBatch(ctx, &b)
+		if err := result.Close(); err != nil {
+			return fmt.Errorf("pgxephemeraltest: failed to close batch results: %w", err)
+		}
 	}
 
 	return nil

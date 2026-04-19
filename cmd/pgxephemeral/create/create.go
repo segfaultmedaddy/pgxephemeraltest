@@ -11,7 +11,6 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/cmdutil"
-	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/viewutil"
 	"go.segfaultmedaddy.com/pgxephemeraltest/internal/dbmanager"
 	"go.segfaultmedaddy.com/pgxephemeraltest/internal/migrator"
 )
@@ -38,7 +37,6 @@ func New() *cli.Command {
 			},
 		}},
 		Flags: []cli.Flag{
-			cmdutil.FormatFlag(),
 			cmdutil.ConnURLFlag(),
 			//nolint:exhaustruct
 			&cli.StringFlag{Required: true, Name: "db-name", Usage: "Name for the new database"},
@@ -54,7 +52,6 @@ func New() *cli.Command {
 
 			return create(ctx, fsys, args{
 				ConnURL:      cmd.String("conn-url"),
-				Format:       cmd.String("format"),
 				DatabaseName: cmd.String("db-name"),
 				FromTemplate: cmd.String("from-template"),
 				FromSQL:      cmd.String("from-sql"),
@@ -64,7 +61,6 @@ func New() *cli.Command {
 }
 
 type args struct {
-	Format       string
 	ConnURL      string
 	DatabaseName string
 	FromTemplate string
@@ -100,24 +96,9 @@ func create(ctx context.Context, fsys fs.ReadFileFS, args args) error {
 		return fmt.Errorf("create ephemeral database from template %q: %w", template, err)
 	}
 
-	switch args.Format {
-	case viewutil.FormatText:
-		if _, err := fmt.Fprintf(
-			os.Stdout,
-			"created a `%s` database using `%s` template\n",
-			db,
-			template,
-		); err != nil {
-			return fmt.Errorf("write text output: %w", err)
-		}
-	case viewutil.FormatJSON:
-		enc := json.NewEncoder(os.Stdout)
-		if err := enc.Encode(map[string]string{"db": db, "template": template}); err != nil {
-			return fmt.Errorf("write JSON output: %w", err)
-		}
-
-	default:
-		return fmt.Errorf("unknown format: %s", args.Format)
+	enc := json.NewEncoder(os.Stdout)
+	if err := enc.Encode(map[string]string{"db": db, "template": template}); err != nil {
+		return fmt.Errorf("write JSON output: %w", err)
 	}
 
 	return nil

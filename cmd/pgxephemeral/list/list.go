@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"os"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urfave/cli/v3"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/cmdutil"
-	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/viewutil"
 	"go.segfaultmedaddy.com/pgxephemeraltest/internal/dbmanager"
 	"go.segfaultmedaddy.com/pgxephemeraltest/internal/sliceutil"
 )
@@ -22,11 +20,10 @@ func New() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
 		Usage: "List all ephemeral databases and templates",
-		Flags: []cli.Flag{cmdutil.FormatFlag(), cmdutil.ConnURLFlag(), cmdutil.IncludeTemplateFlag()},
+		Flags: []cli.Flag{cmdutil.ConnURLFlag(), cmdutil.IncludeTemplateFlag()},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return list(ctx, args{
 				ConnURL:         cmd.String("conn-url"),
-				Format:          cmd.String("format"),
 				IncludeTemplate: cmd.Bool("include-template"),
 			})
 		},
@@ -35,7 +32,6 @@ func New() *cli.Command {
 
 type args struct {
 	ConnURL         string
-	Format          string
 	IncludeTemplate bool
 }
 
@@ -65,27 +61,11 @@ func list(ctx context.Context, args args) error {
 		return errors.New("no databases found")
 	}
 
-	switch args.Format {
-	case viewutil.FormatText:
-		{
-			p := tea.NewProgram(viewutil.NewTableView(dbs))
-			if _, err := p.Run(); err != nil {
-				return fmt.Errorf("render table view: %w", err)
-			}
-		}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
 
-	case viewutil.FormatJSON:
-		{
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-
-			if err := enc.Encode(dbs); err != nil {
-				return fmt.Errorf("write JSON output: %w", err)
-			}
-		}
-
-	default:
-		return fmt.Errorf("unknown format: %s", args.Format)
+	if err := enc.Encode(dbs); err != nil {
+		return fmt.Errorf("write JSON output: %w", err)
 	}
 
 	return nil
