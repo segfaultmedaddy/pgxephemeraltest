@@ -8,7 +8,6 @@ import (
 	"maps"
 	"os"
 	"slices"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urfave/cli/v3"
@@ -94,13 +93,8 @@ func drop(ctx context.Context, args args) error {
 			return errors.New("at least one --db-name must be provided")
 		}
 
-		requested := make(map[string]struct{}, len(args.DatabaseNames))
-		for _, name := range args.DatabaseNames {
-			requested[name] = struct{}{}
-		}
-
 		for name := range toDrop {
-			if _, ok := requested[name]; !ok {
+			if !slices.Contains(args.DatabaseNames, name) {
 				delete(toDrop, name)
 			}
 		}
@@ -111,7 +105,6 @@ func drop(ctx context.Context, args args) error {
 	}
 
 	names := slices.Collect(maps.Keys(toDrop))
-	slices.Sort(names)
 
 	if err := m.DropDBs(ctx, names); err != nil {
 		if args.All {
@@ -121,15 +114,10 @@ func drop(ctx context.Context, args args) error {
 		return fmt.Errorf("drop selected databases: %w", err)
 	}
 
-	dropped := slices.Collect(maps.Values(toDrop))
-	slices.SortFunc(dropped, func(a, b dbmanager.DBInfo) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 
-	if err := enc.Encode(dropped); err != nil {
+	if err := enc.Encode(slices.Collect(maps.Values(toDrop))); err != nil {
 		return fmt.Errorf("write JSON output: %w", err)
 	}
 
