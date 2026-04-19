@@ -93,12 +93,12 @@ func TestDBManager(t *testing.T) {
 		assert.Contains(t, dbs, dbmanager.DBInfo{Name: tpl, IsTemplate: true})
 		assert.Contains(t, dbs, dbmanager.DBInfo{Name: createdDB, IsTemplate: false})
 
-		err = m.DropDB(ctx, createdDB, false)
+		err = m.DropDB(ctx, createdDB)
 		require.NoError(t, err)
 
 		requireFailToConnect(t, config, createdDB, "connection should fail because the database was dropped")
 
-		err = m.DropDB(ctx, tpl, true)
+		err = m.DropDB(ctx, tpl)
 		require.NoError(t, err)
 
 		requireFailToConnect(t, config, tpl, "connection should fail because the template database was dropped")
@@ -142,10 +142,18 @@ func TestDBManager(t *testing.T) {
 		require.ErrorContains(t, err, "refusing to drop unmanaged database")
 	})
 
+	t.Run("it rejects missing managed database names", func(t *testing.T) {
+		t.Parallel()
+
+		err = m.DropDBs(ctx, []string{dbmanager.DatabasePrefix + "missing"})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "not found")
+	})
+
 	t.Run("it rejects unmanaged database name for single drop", func(t *testing.T) {
 		t.Parallel()
 
-		err = m.DropDB(ctx, "postgres", false)
+		err = m.DropDB(ctx, "postgres")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "refusing to drop unmanaged database")
 	})

@@ -22,3 +22,11 @@ func TestFilter(t *testing.T) {
 	ret := Filter(s, func(i int) bool { return i%2 == 0 })
 	require.Equal(t, []int{2, 4}, ret)
 }
+
+func TestUniq(t *testing.T) {
+	t.Parallel()
+
+	s := []int{1, 2, 3, 4, 5, 1, 2, 3, 4, 5}
+	ret := Uniq(s)
+	require.ElementsMatch(t, []int{1, 2, 3, 4, 5}, ret)
+}

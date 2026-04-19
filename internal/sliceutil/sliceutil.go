@@ -1,5 +1,10 @@
 package sliceutil
 
+import (
+	"maps"
+	"slices"
+)
+
 // Map returns a new slice containing the results of applying f to each element of s.
 func Map[T any, U any](s []T, f func(T) U) []U {
 	ret := make([]U, len(s))
@@ -12,7 +17,7 @@ func Map[T any, U any](s []T, f func(T) U) []U {
 
 // Filter returns a new slice containing only the elements of s that satisfy f.
 func Filter[S ~[]T, T any](s S, f func(T) bool) S {
-	ret := make([]T, 0)
+	ret := make([]T, 0, len(s))
 
 	for _, v := range s {
 		if f(v) {
@@ -20,5 +25,19 @@ func Filter[S ~[]T, T any](s S, f func(T) bool) S {
 		}
 	}
 
-	return ret
+	return S(ret)
+}
+
+// Uniq returns a new slice containing only the unique elements of s.
+//
+// Note the order of the elements in the returned slice is not guaranteed.
+func Uniq[S ~[]T, T comparable](s S) S {
+	seen := make(map[T]struct{}, len(s))
+	for _, v := range s {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+		}
+	}
+
+	return S(slices.Collect(maps.Keys(seen)))
 }

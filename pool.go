@@ -142,7 +142,7 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 			return
 		}
 
-		if err := f.m.DropDB(ctx, db, false); err != nil {
+		if err := f.m.DropDB(ctx, db); err != nil {
 			tb.Logf("pgxephemeraltest: failed to drop ephemeral database: %s - %v", db, err)
 		} else {
 			tb.Logf("pgxephemeraltest: dropped ephemeral database: %s", db)
