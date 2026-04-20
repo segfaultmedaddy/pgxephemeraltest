@@ -62,7 +62,7 @@ func TestDBManager(t *testing.T) {
 		dbName := "it_" + strconv.FormatInt(rand.Int64(), 10) // #nosec G404
 
 		// Act
-		err = m.Init(ctx, migrator, tpl)
+		err := m.Init(ctx, migrator, tpl)
 		require.NoError(t, err)
 
 		err = m.Init(ctx, migrator, tpl)
@@ -137,7 +137,7 @@ func TestDBManager(t *testing.T) {
 	t.Run("it rejects unmanaged database names", func(t *testing.T) {
 		t.Parallel()
 
-		err = m.DropDBs(ctx, []string{"postgres"})
+		err := m.DropDBs(ctx, []string{"postgres"})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "refusing to drop unmanaged database")
 	})
@@ -145,7 +145,7 @@ func TestDBManager(t *testing.T) {
 	t.Run("it rejects missing managed database names", func(t *testing.T) {
 		t.Parallel()
 
-		err = m.DropDBs(ctx, []string{dbmanager.DatabasePrefix + "missing"})
+		err := m.DropDBs(ctx, []string{dbmanager.DatabasePrefix + "missing"})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "not found")
 	})
@@ -153,7 +153,7 @@ func TestDBManager(t *testing.T) {
 	t.Run("it rejects unmanaged database name for single drop", func(t *testing.T) {
 		t.Parallel()
 
-		err = m.DropDB(ctx, "postgres")
+		err := m.DropDB(ctx, "postgres")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "refusing to drop unmanaged database")
 	})
