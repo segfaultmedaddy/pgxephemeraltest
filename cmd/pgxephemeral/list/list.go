@@ -2,10 +2,8 @@ package list
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urfave/cli/v3"
@@ -22,10 +20,10 @@ func New() *cli.Command {
 		Usage: "List all ephemeral databases and templates",
 		Flags: []cli.Flag{cmdutil.ConnURLFlag(), cmdutil.IncludeTemplateFlag()},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return list(ctx, args{
+			return cmdutil.Write(list(ctx, args{
 				ConnURL:         cmd.String("conn-url"),
 				IncludeTemplate: cmd.Bool("include-template"),
-			})
+			}))
 		},
 	}
 }
@@ -35,20 +33,20 @@ type args struct {
 	IncludeTemplate bool
 }
 
-func list(ctx context.Context, args args) error {
+func list(ctx context.Context, args args) (any, error) {
 	config, err := pgxpool.ParseConfig(args.ConnURL)
 	if err != nil {
-		return fmt.Errorf("parse connection URL: %w", err)
+		return nil, fmt.Errorf("parse connection URL: %w", err)
 	}
 
 	m, err := dbmanager.New(ctx, config)
 	if err != nil {
-		return fmt.Errorf("create database manager: %w", err)
+		return nil, fmt.Errorf("create database manager: %w", err)
 	}
 
 	dbs, err := m.ListDBs(ctx)
 	if err != nil {
-		return fmt.Errorf("list ephemeral databases: %w", err)
+		return nil, fmt.Errorf("list ephemeral databases: %w", err)
 	}
 
 	if !args.IncludeTemplate {
@@ -58,15 +56,8 @@ func list(ctx context.Context, args args) error {
 	}
 
 	if len(dbs) == 0 {
-		return errors.New("no databases found")
+		return nil, errors.New("no databases found")
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-
-	if err := enc.Encode(dbs); err != nil {
-		return fmt.Errorf("write JSON output: %w", err)
-	}
-
-	return nil
+	return dbs, nil
 }
