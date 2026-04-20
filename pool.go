@@ -125,7 +125,7 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	assertNoError(tb, err, "pgxephemeraltest: failed to create ephemeral database")
 
 	pool, err := f.pool(ctx, db)
-	assertNoError(tb, err, "pgxephemeraltest: failed to create ephemeral database")
+	assertNoError(tb, err, "pgxephemeraltest: failed to connect to ephemeral database")
 
 	tb.Logf("pgxephemeraltest: spun up a new ephemeral database for test: %s", db)
 
