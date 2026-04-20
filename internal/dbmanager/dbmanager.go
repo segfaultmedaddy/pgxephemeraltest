@@ -38,6 +38,15 @@ type Migrator interface {
 	Hash() string
 }
 
+// DBInfo holds information about a database.
+type DBInfo struct {
+	// Name is the name of the database.
+	Name string `json:"name"`
+
+	// IsTemplate indicates whether the database is a template database.
+	IsTemplate bool `json:"isTemplate"`
+}
+
 // DBManager manages lifecycle of a set of ephemeral databases
 // used for testing purposes.
 //
@@ -59,9 +68,7 @@ func New(
 	_ context.Context,
 	config *pgxpool.Config,
 ) (*DBManager, error) {
-	m := DBManager{
-		config: config.Copy(),
-	}
+	m := DBManager{config: config.Copy()}
 
 	return &m, nil
 }
@@ -224,11 +231,6 @@ func (f *DBManager) DropDBs(ctx context.Context, dbs []string) error {
 	}
 
 	return nil
-}
-
-type DBInfo struct {
-	Name       string `json:"name"`
-	IsTemplate bool   `json:"isTemplate"`
 }
 
 func (f *DBManager) ListDBs(ctx context.Context) ([]DBInfo, error) {

@@ -2,7 +2,6 @@ package create
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -44,18 +43,18 @@ func New() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			cwd, err := os.Getwd()
 			if err != nil {
-				return fmt.Errorf("get current working directory: %w", err)
+				return cmdutil.Write(nil, fmt.Errorf("get current working directory: %w", err))
 			}
 
 			//nolint:forcetypeassert // os.DirFS for real dirs implements fs.ReadFileFS.
 			fsys := os.DirFS(cwd).(fs.ReadFileFS)
 
-			return create(ctx, fsys, args{
+			return cmdutil.Write(create(ctx, fsys, args{
 				ConnURL:      cmd.String("conn-url"),
 				DatabaseName: cmd.String("db-name"),
 				FromTemplate: cmd.String("from-template"),
 				FromSQL:      cmd.String("from-sql"),
-			})
+			}))
 		},
 	}
 }
@@ -67,39 +66,40 @@ type args struct {
 	FromSQL      string
 }
 
-func create(ctx context.Context, fsys fs.ReadFileFS, args args) error {
+func create(ctx context.Context, fsys fs.ReadFileFS, args args) (any, error) {
 	config, err := pgxpool.ParseConfig(args.ConnURL)
 	if err != nil {
-		return fmt.Errorf("parse connection URL: %w", err)
+		return nil, fmt.Errorf("parse connection URL: %w", err)
 	}
 
 	m, err := dbmanager.New(ctx, config)
 	if err != nil {
-		return fmt.Errorf("create database manager: %w", err)
+		return nil, fmt.Errorf("create database manager: %w", err)
 	}
 
 	template := args.FromTemplate
+	ret := make([]dbmanager.DBInfo, 0, 2)
+
 	if args.FromSQL != "" {
 		fileMigrator, err := migrator.FromFile(fsys, args.FromSQL)
 		if err != nil {
-			return fmt.Errorf("load SQL migration file %q: %w", args.FromSQL, err)
+			return nil, fmt.Errorf("load SQL migration file %q: %w", args.FromSQL, err)
 		}
 
 		template = dbmanager.TemplateName(config.ConnConfig, fileMigrator)
 		if err := m.Init(ctx, fileMigrator, template); err != nil {
-			return fmt.Errorf("initialize template %q: %w", template, err)
+			return nil, fmt.Errorf("initialize template %q: %w", template, err)
 		}
+
+		ret = append(ret, dbmanager.DBInfo{Name: template, IsTemplate: true})
 	}
 
 	db, err := m.CreateDB(ctx, template, args.DatabaseName)
 	if err != nil {
-		return fmt.Errorf("create ephemeral database from template %q: %w", template, err)
+		return nil, fmt.Errorf("create ephemeral database from template %q: %w", template, err)
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	if err := enc.Encode(map[string]string{"db": db, "template": template}); err != nil {
-		return fmt.Errorf("write JSON output: %w", err)
-	}
+	ret = append(ret, dbmanager.DBInfo{Name: db, IsTemplate: false})
 
-	return nil
+	return ret, nil
 }

@@ -14,7 +14,6 @@ import (
 
 func main() {
 	if err := run(context.Background()); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
