@@ -62,8 +62,8 @@ type DBManager struct {
 
 // New creates a new DBManager instance.
 //
-// It initializes a new database, applies migration to it and marks it as
-// a template. The template is copied for each newly created ephemeral database.
+// It copies the provided database configuration for later use by the manager.
+// Database and template initialization is performed by Init.
 func New(
 	_ context.Context,
 	config *pgxpool.Config,
