@@ -1,23 +1,27 @@
 package pgxephemeraltest
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/docker/docker/pkg/namesgenerator"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest/internal/dbmanager"
 	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
+	"go.segfaultmedaddy.com/pgxephemeraltest/internal/namegenerator"
 )
 
 type factoryOptions struct {
 	cleanupTimeout time.Duration
 }
 
-func (p *factoryOptions) defaults() { p.cleanupTimeout = DefaultCleanupTimeout }
+func (p *factoryOptions) defaults() {
+	p.cleanupTimeout = cmp.Or(p.cleanupTimeout, DefaultCleanupTimeout)
+}
 
 const (
 	DatabasePrefix = dbmanager.DatabasePrefix
@@ -125,7 +129,22 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	assertNoError(tb, err, "pgxephemeraltest: failed to create ephemeral database")
 
 	pool, err := f.pool(ctx, db)
-	assertNoError(tb, err, "pgxephemeraltest: failed to connect to ephemeral database")
+	if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), f.cleanupTimeout)
+		defer cancel()
+
+		if dropErr := f.m.DropDB(ctx, db); dropErr != nil {
+			err = errors.Join(
+				err,
+				fmt.Errorf(
+					"pgxephemeraltest: failed to cleanup ephemeral database after connection failure: %w",
+					dropErr,
+				),
+			)
+		}
+
+		assertNoError(tb, err, "pgxephemeraltest: failed to connect to ephemeral database")
+	}
 
 	tb.Logf("pgxephemeraltest: spun up a new ephemeral database for test: %s", db)
 
@@ -143,7 +162,7 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 		}
 
 		if err := f.m.DropDB(ctx, db); err != nil {
-			tb.Logf("pgxephemeraltest: failed to drop ephemeral database: %s - %v", db, err)
+			tb.Errorf("pgxephemeraltest: failed to drop ephemeral database: %s - %v", db, err)
 		} else {
 			tb.Logf("pgxephemeraltest: dropped ephemeral database: %s", db)
 		}
@@ -153,9 +172,9 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 }
 
 func (f *PoolFactory) createDB(ctx context.Context) (string, error) {
-	db, err := randomName(6)
+	db, err := namegenerator.Generate(rand.Reader)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate database name: %w", err)
 	}
 
 	db, err = f.m.CreateDB(ctx, f.template, db)
@@ -182,19 +201,4 @@ func (f *PoolFactory) pool(ctx context.Context, db string) (*pgxpool.Pool, error
 	}
 
 	return p, nil
-}
-
-// randomName generates a random name using docker names alphabet
-// and random suffix.
-//
-// n is the length of the random suffix.
-func randomName(n int) (string, error) {
-	name := namesgenerator.GetRandomName(0)
-
-	bytes := make([]byte, n/2)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("pgxephemeraltest: failed to generate random name: %w", err)
-	}
-
-	return fmt.Sprintf("%s_%x", name, bytes), nil
 }

@@ -91,3 +91,16 @@ func TestTxFactory_Parallel(t *testing.T) {
 		})
 	}
 }
+
+func TestNewTxFactoryFromConnStringPingsDatabase(t *testing.T) {
+	t.Parallel()
+
+	_, cleanup, err := pgxephemeraltest.NewTxFactoryFromConnString(
+		t.Context(),
+		"postgres://test:test@127.0.0.1:1/postgres?connect_timeout=1",
+	)
+
+	require.Error(t, err)
+	require.Nil(t, cleanup)
+	require.ErrorContains(t, err, "failed to ping database")
+}

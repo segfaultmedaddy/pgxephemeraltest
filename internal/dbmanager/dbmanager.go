@@ -147,17 +147,13 @@ func (f *DBManager) DropDB(ctx context.Context, db string) error {
 	}
 	defer mc.Close(ctx)
 
-	if _, err := mc.Exec(
-		ctx,
-		"UPDATE pg_database SET datistemplate = false WHERE datname = $1 AND datistemplate = true",
-		db,
-	); err != nil {
+	if _, err := mc.Exec(ctx, alterDatabaseIsTemplate(db, false)); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to unset template flag: %w", err)
 	}
 
 	if _, err := mc.Exec(
 		ctx,
-		strings.Join([]string{"DROP DATABASE", pgx.Identifier{db}.Sanitize()}, " "),
+		strings.Join([]string{"DROP DATABASE", pgx.Identifier{db}.Sanitize(), "WITH (FORCE)"}, " "),
 	); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to drop database %s: %w", db, err)
 	}
@@ -208,12 +204,14 @@ func (f *DBManager) DropDBs(ctx context.Context, dbs []string) error {
 
 	if len(templates) > 0 {
 		for chunk := range slices.Chunk(templates, 256) {
-			if _, err := mc.Exec(
-				ctx,
-				"UPDATE pg_database SET datistemplate = false WHERE datname = ANY($1)",
-				chunk,
-			); err != nil {
-				return fmt.Errorf("pgxephemeraltest: failed to unset template flag: %w", err)
+			var b pgx.Batch
+			for _, template := range chunk {
+				b.Queue(alterDatabaseIsTemplate(template, false))
+			}
+
+			result := mc.SendBatch(ctx, &b)
+			if err := result.Close(); err != nil {
+				return fmt.Errorf("pgxephemeraltest: failed to unset template flags: %w", err)
 			}
 		}
 	}
@@ -221,7 +219,12 @@ func (f *DBManager) DropDBs(ctx context.Context, dbs []string) error {
 	for chunk := range slices.Chunk(dbs, 256) {
 		var b pgx.Batch
 		for _, dbName := range chunk {
-			b.Queue(strings.Join([]string{"DROP DATABASE", pgx.Identifier{dbName}.Sanitize()}, " "))
+			b.Queue(
+				strings.Join(
+					[]string{"DROP DATABASE", pgx.Identifier{dbName}.Sanitize(), "WITH (FORCE)"},
+					" ",
+				),
+			)
 		}
 
 		result := mc.SendBatch(ctx, &b)
@@ -242,9 +245,12 @@ func (f *DBManager) ListDBs(ctx context.Context) ([]DBInfo, error) {
 
 	rows, err := mc.Query(
 		ctx,
-		"SELECT datname, datistemplate FROM pg_database WHERE datname LIKE $1 OR datname LIKE $2 ORDER BY oid",
-		TemplatePrefix+"%",
-		DatabasePrefix+"%",
+		`SELECT datname, datistemplate
+			FROM pg_database
+			WHERE starts_with(datname, $1) OR starts_with(datname, $2)
+			ORDER BY oid`,
+		TemplatePrefix,
+		DatabasePrefix,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("pgxephemeraltest: failed to list databases: %w", err)
@@ -334,6 +340,7 @@ func (f *DBManager) mkTemplate(ctx context.Context, migrator Migrator, user, tem
 	if _, err := mc.Exec(ctx, strings.Join([]string{
 		"DROP DATABASE IF EXISTS",
 		pgx.Identifier{template}.Sanitize(),
+		"WITH (FORCE)",
 	}, " ")); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to drop existing database template: %w", err)
 	}
@@ -358,15 +365,20 @@ func (f *DBManager) mkTemplate(ctx context.Context, migrator Migrator, user, tem
 		return fmt.Errorf("pgxephemeraltest: failed to run migrations: %w", err)
 	}
 
-	if _, err := mc.Exec(
-		ctx,
-		"UPDATE pg_database SET datistemplate = true WHERE datname = $1",
-		template,
-	); err != nil {
+	if _, err := mc.Exec(ctx, alterDatabaseIsTemplate(template, true)); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to finalize database template: %w", err)
 	}
 
 	return nil
+}
+
+func alterDatabaseIsTemplate(db string, isTemplate bool) string {
+	return strings.Join([]string{
+		"ALTER DATABASE",
+		pgx.Identifier{db}.Sanitize(),
+		"WITH IS_TEMPLATE",
+		strconv.FormatBool(isTemplate),
+	}, " ")
 }
 
 // acquireLock acquires a postgres advisory lock.

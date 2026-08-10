@@ -51,6 +51,12 @@ func NewTxFactoryFromConnString(
 		return nil, nil, fmt.Errorf("pgxephemeraltest: failed to create connection pool: %w", err)
 	}
 
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+
+		return nil, nil, fmt.Errorf("pgxephemeraltest: failed to ping database: %w", err)
+	}
+
 	f := NewTxFactory(pool, opts...)
 
 	return f, pool.Close, nil
