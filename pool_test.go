@@ -2,7 +2,10 @@ package pgxephemeraltest_test
 
 import (
 	"fmt"
+	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -73,6 +76,7 @@ func TestPoolFactory(t *testing.T) {
 		)
 
 		tt.EXPECT().Context().AnyTimes().Return(t.Context())
+		tt.EXPECT().Name().Return(t.Name())
 		tt.EXPECT().Cleanup(gomock.Any()).AnyTimes().Do(func(f func()) {
 			cleanup = f
 		})
@@ -116,6 +120,7 @@ func TestPoolFactory(t *testing.T) {
 		)
 
 		tt.EXPECT().Context().AnyTimes().Return(t.Context())
+		tt.EXPECT().Name().Return(t.Name())
 		tt.EXPECT().Cleanup(gomock.Any()).AnyTimes().Do(func(f func()) {
 			cleanup = f
 		})
@@ -272,4 +277,37 @@ func TestPoolFactory_NoopMigrator(t *testing.T) {
 		err := p.Ping(t.Context())
 		assert.NoError(t, err, "pool should be connected to a valid database")
 	}
+}
+
+func TestPoolFactory_DatabaseNames(t *testing.T) {
+	t.Parallel()
+
+	config := testutil.PoolConfig(t)
+	f, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, testutil.NewNoopMigrator())
+	require.NoError(t, err)
+
+	first := f.Pool(t).Config().ConnConfig.Database
+	second := f.Pool(t).Config().ConnConfig.Database
+	prefix := pgxephemeraltest.DatabasePrefix
+	pattern := regexp.MustCompile("^" + regexp.QuoteMeta(prefix) + "[0-9a-f]{8}_")
+	require.Regexp(t, pattern, first)
+	namePrefix := first[:len(prefix)+8]
+	assert.Equal(t, namePrefix+"_"+url.QueryEscape(t.Name())+"_1", first)
+	assert.Equal(t, namePrefix+"_"+url.QueryEscape(t.Name())+"_2", second)
+
+	other, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, testutil.NewNoopMigrator())
+	require.NoError(t, err)
+	otherName := other.Pool(t).Config().ConnConfig.Database
+	assert.Regexp(t, pattern, otherName)
+	assert.Equal(t, "_"+url.QueryEscape(t.Name())+"_1", otherName[len(prefix)+8:])
+
+	t.Run("long / name "+strings.Repeat("z", 100), func(t *testing.T) {
+		t.Parallel()
+
+		name := f.Pool(t).Config().ConnConfig.Database
+		assert.LessOrEqual(t, len(name), 63)
+		assert.True(t, strings.HasPrefix(name, namePrefix+"_"))
+		assert.True(t, strings.HasSuffix(name, "_3"))
+		assert.True(t, strings.HasPrefix(url.QueryEscape(t.Name()), name[len(namePrefix)+1:len(name)-2]))
+	})
 }
