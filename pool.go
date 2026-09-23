@@ -48,6 +48,7 @@ type PoolFactory struct {
 	m              *dbmanager.DBManager
 	config         *pgxpool.Config
 	template       string
+	names          *namegenerator.Generator
 	cleanupTimeout time.Duration
 }
 
@@ -68,6 +69,11 @@ func NewPoolFactory(
 
 	options.defaults()
 
+	names, err := namegenerator.New(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
+	}
+
 	m, err := dbmanager.New(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
@@ -84,6 +90,7 @@ func NewPoolFactory(
 		config:         config.Copy(),
 		m:              m,
 		template:       template,
+		names:          names,
 	}
 
 	return &f, nil
@@ -125,7 +132,7 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 
 	ctx := tb.Context()
 
-	db, err := f.createDB(ctx)
+	db, err := f.createDB(ctx, tb.Name())
 	assertNoError(tb, err, "pgxephemeraltest: failed to create ephemeral database")
 
 	pool, err := f.pool(ctx, db)
@@ -171,13 +178,8 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	return pool
 }
 
-func (f *PoolFactory) createDB(ctx context.Context) (string, error) {
-	db, err := namegenerator.Generate(rand.Reader)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate database name: %w", err)
-	}
-
-	db, err = f.m.CreateDB(ctx, f.template, db)
+func (f *PoolFactory) createDB(ctx context.Context, testName string) (string, error) {
+	db, err := f.m.CreateDB(ctx, f.template, f.names.Generate(testName))
 	if err != nil {
 		return "", fmt.Errorf("create ephemeral database from template %q: %w", f.template, err)
 	}

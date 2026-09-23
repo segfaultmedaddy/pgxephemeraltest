@@ -16,7 +16,7 @@ import (
 
 const (
 	TemplatePrefix = "pgxephemeraltest_template_"
-	DatabasePrefix = "pgxephemeraltest_db_"
+	DatabasePrefix = "pgepht_"
 )
 
 // Migrator applies the migration to the database.
