@@ -9,7 +9,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,11 +100,10 @@ func TestPoolFactory(t *testing.T) {
 		// Assert
 		require.NotEmpty(t, database)
 
-		cfg := config.Copy().ConnConfig.Copy()
-		cfg.Database = database
-
-		_, err = pgx.ConnectConfig(t.Context(), cfg)
-		require.Error(t, err, "connection should fail because the database was dropped")
+		testutil.RequireFailToConnect(
+			t.Context(), t, config, database,
+			"connection should fail because the database was dropped",
+		)
 	})
 
 	t.Run("it leaves database intact on failure", func(t *testing.T) {
@@ -145,11 +143,10 @@ func TestPoolFactory(t *testing.T) {
 		// Assert
 		require.NotEmpty(t, database)
 
-		cfg := config.Copy().ConnConfig.Copy()
-		cfg.Database = database
-
-		conn, err := pgx.ConnectConfig(t.Context(), cfg)
-		require.NoError(t, err, "database should still exist after failed test")
+		conn := testutil.RequireConnect(
+			t.Context(), t, config, database,
+			"database should still exist after failed test",
+		)
 		t.Cleanup(func() { conn.Close(t.Context()) })
 
 		rows, err = conn.Query(t.Context(), "SELECT * FROM kv")
@@ -183,15 +180,10 @@ func TestPoolFactory(t *testing.T) {
 		require.NotNil(t, cleanup)
 		cleanup()
 
-		cfg := config.ConnConfig.Copy()
-		cfg.Database = database
-
-		conn, err := pgx.ConnectConfig(t.Context(), cfg)
-		if conn != nil {
-			t.Cleanup(func() { conn.Close(t.Context()) })
-		}
-
-		require.Error(t, err, "database should be dropped even when the test fails")
+		testutil.RequireFailToConnect(
+			t.Context(), t, config, database,
+			"database should be dropped even when the test fails",
+		)
 	})
 
 	t.Run("it creates an isolated database on each Pool call", func(t *testing.T) {
