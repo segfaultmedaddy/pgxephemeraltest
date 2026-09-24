@@ -9,7 +9,7 @@ import (
 )
 
 func ConnURLFlag() *cli.StringFlag {
-	//nolint:exhaustruct
+	//nolint:exhaustruct_v5
 	return &cli.StringFlag{
 		Required: true,
 		Name:     "conn-url",
@@ -19,7 +19,7 @@ func ConnURLFlag() *cli.StringFlag {
 }
 
 func IncludeTemplateFlag() *cli.BoolFlag {
-	//nolint:exhaustruct
+	//nolint:exhaustruct_v5
 	return &cli.BoolFlag{
 		Name:  "include-template",
 		Usage: "Include template databases",

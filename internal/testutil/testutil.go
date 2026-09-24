@@ -27,12 +27,12 @@ type Migrator struct {
 }
 
 func NewNoopMigrator() *Migrator {
-	//nolint:exhaustruct // calls counter intentionally starts from zero value.
+	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
 	return &Migrator{Schema: "", HashID: "noop"}
 }
 
 func NewKVMigrator() *Migrator {
-	//nolint:exhaustruct // calls counter intentionally starts from zero value.
+	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
 	return &Migrator{
 		Schema: KVSchema,
 		HashID: "kv" + strconv.FormatInt(rand.Int64(), 10), // #nosec G404
@@ -40,7 +40,7 @@ func NewKVMigrator() *Migrator {
 }
 
 func NewMigrator(schema, hash string) *Migrator {
-	//nolint:exhaustruct // calls counter intentionally starts from zero value.
+	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
 	return &Migrator{Schema: schema, HashID: hash}
 }
 
