@@ -16,7 +16,8 @@ import (
 )
 
 type factoryOptions struct {
-	cleanupTimeout time.Duration
+	cleanupTimeout              time.Duration
+	shouldKeepDatabaseOnFailure bool
 }
 
 func (p *factoryOptions) defaults() {
@@ -45,11 +46,12 @@ type Migrator = dbmanager.Migrator
 // Each created database is prepared with applied migration provided by running
 // provided migrator.
 type PoolFactory struct {
-	m              *dbmanager.DBManager
-	config         *pgxpool.Config
-	template       string
-	names          *namegenerator.Generator
-	cleanupTimeout time.Duration
+	m                           *dbmanager.DBManager
+	config                      *pgxpool.Config
+	template                    string
+	names                       *namegenerator.Generator
+	cleanupTimeout              time.Duration
+	shouldKeepDatabaseOnFailure bool
 }
 
 // NewPoolFactory creates a new PoolFactory instance.
@@ -63,6 +65,9 @@ func NewPoolFactory(
 	opts ...FactoryOption,
 ) (*PoolFactory, error) {
 	var options factoryOptions
+
+	options.shouldKeepDatabaseOnFailure = true
+
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -86,11 +91,12 @@ func NewPoolFactory(
 	}
 
 	f := PoolFactory{
-		cleanupTimeout: options.cleanupTimeout,
-		config:         config.Copy(),
-		m:              m,
-		template:       template,
-		names:          names,
+		cleanupTimeout:              options.cleanupTimeout,
+		config:                      config.Copy(),
+		m:                           m,
+		template:                    template,
+		names:                       names,
+		shouldKeepDatabaseOnFailure: options.shouldKeepDatabaseOnFailure,
 	}
 
 	return &f, nil
@@ -125,8 +131,8 @@ func (f *PoolFactory) Template() string { return f.template }
 // helps to isolate tests and prevent data leakage between them.
 //
 // Lifetime of the pool is managed by the tb, the pool is closed when
-// the test is done. If a test is failed the database is left intact for debugging,
-// otherwise it is dropped.
+// the test is done. By default, a failed test's database is left intact for debugging;
+// otherwise it is dropped. Use WithKeepDatabaseOnFailure(false) to drop it on failure too.
 func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	tb.Helper()
 
@@ -161,8 +167,8 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 		ctx, cancel := context.WithTimeout(context.Background(), f.cleanupTimeout)
 		defer cancel()
 
-		// Leave the database intact if the test has failed for debugging
-		if tb.Failed() {
+		// Leave the database intact if the test has failed for debugging.
+		if tb.Failed() && f.shouldKeepDatabaseOnFailure {
 			tb.Logf("pgxephemeraltest: failed test, leaving database intact: %s", db)
 
 			return
