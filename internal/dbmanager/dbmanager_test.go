@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -75,7 +74,7 @@ func TestDBManager(t *testing.T) {
 		assert.Equal(t, int32(1), migrator.Calls(), "second Init call should reuse existing template")
 		assert.Equal(t, dbmanager.DatabasePrefix+dbName, createdDB)
 
-		conn := requireConnect(t, config, createdDB)
+		conn := testutil.RequireConnect(ctx, t, config, createdDB)
 
 		_, err = conn.Exec(ctx, "INSERT INTO kv (key, value) VALUES ($1, $2)", "foo", "bar")
 		require.NoError(t, err)
@@ -96,12 +95,18 @@ func TestDBManager(t *testing.T) {
 		err = m.DropDB(ctx, createdDB)
 		require.NoError(t, err)
 
-		requireFailToConnect(t, config, createdDB, "connection should fail because the database was dropped")
+		testutil.RequireFailToConnect(
+			ctx, t, config, createdDB,
+			"connection should fail because the database was dropped",
+		)
 
 		err = m.DropDB(ctx, tpl)
 		require.NoError(t, err)
 
-		requireFailToConnect(t, config, tpl, "connection should fail because the template database was dropped")
+		testutil.RequireFailToConnect(
+			ctx, t, config, tpl,
+			"connection should fail because the template database was dropped",
+		)
 	})
 
 	t.Run("it drops multiple databases including templates", func(t *testing.T) {
@@ -130,7 +135,7 @@ func TestDBManager(t *testing.T) {
 
 		// Assert
 		for _, db := range []string{db1, db2, tpl} {
-			requireFailToConnect(t, config, db)
+			testutil.RequireFailToConnect(ctx, t, config, db)
 		}
 	})
 
@@ -157,30 +162,4 @@ func TestDBManager(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "refusing to drop unmanaged database")
 	})
-}
-
-func requireConnect(tb testing.TB, config *pgxpool.Config, db string) *pgx.Conn {
-	tb.Helper()
-
-	connConfig := config.ConnConfig.Copy()
-	connConfig.Database = db
-
-	conn, err := pgx.ConnectConfig(tb.Context(), connConfig)
-	require.NoError(tb, err)
-
-	return conn
-}
-
-func requireFailToConnect(tb testing.TB, config *pgxpool.Config, db string, msg ...string) {
-	tb.Helper()
-
-	connConfig := config.ConnConfig.Copy()
-	connConfig.Database = db
-
-	conn, err := pgx.ConnectConfig(tb.Context(), connConfig)
-	if conn != nil {
-		conn.Close(tb.Context())
-	}
-
-	require.Error(tb, err, msg)
 }
