@@ -48,8 +48,8 @@ type Migrator = dbmanager.Migrator
 type PoolFactory struct {
 	m                           *dbmanager.DBManager
 	config                      *pgxpool.Config
-	template                    string
 	names                       *namegenerator.Generator
+	template                    string
 	cleanupTimeout              time.Duration
 	shouldKeepDatabaseOnFailure bool
 }
