@@ -25,9 +25,12 @@ formatters:
         - dot
 linters:
   default: all
+  enable:
+    - exhaustruct_v5
   disable:
     - cyclop # cyclomatic complexity, biased bs
     - err113 # wants errors to be defined as var upfront, annoying
+    - exhaustruct # replaced by exhaustruct_v5
     - funlen # detects long functions, annoying
     - gocognit # calculates cognitive complexity, biased bs
     - gocyclo # another cyclomatic complexity, biased bs
@@ -54,7 +57,7 @@ linters:
     rules:
       - path: _test\.go
         linters:
-          - exhaustruct
+          - exhaustruct_v5
   settings:
     depguard:
       rules:
@@ -93,7 +96,7 @@ linters:
       require-specific: true
       allow-no-explanation:
         - gochecknoglobals
-        - exhaustruct
-    exhaustruct:
-      exclude:
-        - github.com/jackc/pgx/v5/pgtype.Numeric
+        - exhaustruct_v5
+    exhaustruct_v5:
+      ignore-patterns:
+        - '^github\.com/jackc/pgx/v5/pgtype\.Numeric$'

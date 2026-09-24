@@ -73,7 +73,7 @@ func (f TxFactory) Tx(tb internaltesting.TB) pgx.Tx {
 	// ReadCommitted is the default isolation level in Postgres, however,
 	// it might be overridden by the database configuration. We need to ensure
 	// that the transaction isolation level doesn't allow dirty writes.
-	//nolint:exhaustruct // only isolation level matters for tests.
+	//nolint:exhaustruct_v5 // only isolation level matters for tests.
 	tx, err := f.executor.BeginTx(tb.Context(), pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	assertNoError(tb, err, "pgxephemeraltest: failed to start transaction")
 

@@ -15,29 +15,29 @@ import (
 )
 
 func New() *cli.Command {
-	//nolint:exhaustruct
+	//nolint:exhaustruct_v5
 	return &cli.Command{
 		Name:  "create",
 		Usage: "Create an ephemeral database from a template or SQL file",
 		MutuallyExclusiveFlags: []cli.MutuallyExclusiveFlags{{
-			//nolint:exhaustruct
+			//nolint:exhaustruct_v5
 			Required: true,
-			Flags: [][]cli.Flag{ //nolint:exhaustruct
+			Flags: [][]cli.Flag{ //nolint:exhaustruct_v5
 				{
 					&cli.StringFlag{
 						Name:  "from-template",
 						Usage: "Name of an existing template to clone",
-					}, //nolint:exhaustruct
+					}, //nolint:exhaustruct_v5
 					&cli.StringFlag{
 						Name:  "from-sql",
 						Usage: "Path to a SQL file to use as migration",
-					}, //nolint:exhaustruct
+					}, //nolint:exhaustruct_v5
 				},
 			},
 		}},
 		Flags: []cli.Flag{
 			cmdutil.ConnURLFlag(),
-			//nolint:exhaustruct
+			//nolint:exhaustruct_v5
 			&cli.StringFlag{Required: true, Name: "db-name", Usage: "Name for the new database"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {

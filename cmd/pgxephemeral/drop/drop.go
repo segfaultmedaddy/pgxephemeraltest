@@ -16,24 +16,24 @@ import (
 )
 
 func New() *cli.Command {
-	//nolint:exhaustruct
+	//nolint:exhaustruct_v5
 	return &cli.Command{
 		Name:  "drop",
 		Usage: "Drop ephemeral databases",
 		Flags: []cli.Flag{cmdutil.ConnURLFlag(), cmdutil.IncludeTemplateFlag()},
 		MutuallyExclusiveFlags: []cli.MutuallyExclusiveFlags{{
-			//nolint:exhaustruct
+			//nolint:exhaustruct_v5
 			Required: true,
-			Flags: [][]cli.Flag{ //nolint:exhaustruct
+			Flags: [][]cli.Flag{ //nolint:exhaustruct_v5
 				{
 					&cli.StringSliceFlag{
 						Name:  "db-name",
 						Usage: "Name of the database to drop (repeatable)",
-					}, //nolint:exhaustruct
+					}, //nolint:exhaustruct_v5
 					&cli.BoolFlag{
 						Name:  "all",
 						Usage: "Drop all ephemeral databases",
-					}, //nolint:exhaustruct
+					}, //nolint:exhaustruct_v5
 				},
 			},
 		}},
