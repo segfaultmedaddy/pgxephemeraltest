@@ -16,7 +16,8 @@ import (
 )
 
 type factoryOptions struct {
-	cleanupTimeout time.Duration
+	cleanupTimeout              time.Duration
+	shouldKeepDatabaseOnFailure bool
 }
 
 func (p *factoryOptions) defaults() {
@@ -45,10 +46,12 @@ type Migrator = dbmanager.Migrator
 // Each created database is prepared with applied migration provided by running
 // provided migrator.
 type PoolFactory struct {
-	m              *dbmanager.DBManager
-	config         *pgxpool.Config
-	template       string
-	cleanupTimeout time.Duration
+	m                           *dbmanager.DBManager
+	config                      *pgxpool.Config
+	names                       *namegenerator.Generator
+	template                    string
+	cleanupTimeout              time.Duration
+	shouldKeepDatabaseOnFailure bool
 }
 
 // NewPoolFactory creates a new PoolFactory instance.
@@ -62,11 +65,19 @@ func NewPoolFactory(
 	opts ...FactoryOption,
 ) (*PoolFactory, error) {
 	var options factoryOptions
+
+	options.shouldKeepDatabaseOnFailure = true
+
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	options.defaults()
+
+	names, err := namegenerator.New(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
+	}
 
 	m, err := dbmanager.New(ctx, config)
 	if err != nil {
@@ -80,10 +91,12 @@ func NewPoolFactory(
 	}
 
 	f := PoolFactory{
-		cleanupTimeout: options.cleanupTimeout,
-		config:         config.Copy(),
-		m:              m,
-		template:       template,
+		cleanupTimeout:              options.cleanupTimeout,
+		config:                      config.Copy(),
+		m:                           m,
+		template:                    template,
+		names:                       names,
+		shouldKeepDatabaseOnFailure: options.shouldKeepDatabaseOnFailure,
 	}
 
 	return &f, nil
@@ -118,14 +131,14 @@ func (f *PoolFactory) Template() string { return f.template }
 // helps to isolate tests and prevent data leakage between them.
 //
 // Lifetime of the pool is managed by the tb, the pool is closed when
-// the test is done. If a test is failed the database is left intact for debugging,
-// otherwise it is dropped.
+// the test is done. By default, a failed test's database is left intact for debugging;
+// otherwise it is dropped. Use WithKeepDatabaseOnFailure(false) to drop it on failure too.
 func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	tb.Helper()
 
 	ctx := tb.Context()
 
-	db, err := f.createDB(ctx)
+	db, err := f.createDB(ctx, tb.Name())
 	assertNoError(tb, err, "pgxephemeraltest: failed to create ephemeral database")
 
 	pool, err := f.pool(ctx, db)
@@ -154,8 +167,8 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 		ctx, cancel := context.WithTimeout(context.Background(), f.cleanupTimeout)
 		defer cancel()
 
-		// Leave the database intact if the test has failed for debugging
-		if tb.Failed() {
+		// Leave the database intact if the test has failed for debugging.
+		if tb.Failed() && f.shouldKeepDatabaseOnFailure {
 			tb.Logf("pgxephemeraltest: failed test, leaving database intact: %s", db)
 
 			return
@@ -171,13 +184,8 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	return pool
 }
 
-func (f *PoolFactory) createDB(ctx context.Context) (string, error) {
-	db, err := namegenerator.Generate(rand.Reader)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate database name: %w", err)
-	}
-
-	db, err = f.m.CreateDB(ctx, f.template, db)
+func (f *PoolFactory) createDB(ctx context.Context, testName string) (string, error) {
+	db, err := f.m.CreateDB(ctx, f.template, f.names.Generate(testName))
 	if err != nil {
 		return "", fmt.Errorf("create ephemeral database from template %q: %w", f.template, err)
 	}

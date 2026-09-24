@@ -19,7 +19,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	//nolint:exhaustruct
+	//nolint:exhaustruct_v5
 	app := cli.Command{
 		Name:     "pgxephemeral",
 		Usage:    "Manage ephemeral PostgreSQL databases for testing",

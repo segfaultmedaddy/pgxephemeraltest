@@ -14,7 +14,7 @@ import (
 )
 
 func New() *cli.Command {
-	//nolint:exhaustruct
+	//nolint:exhaustruct_v5
 	return &cli.Command{
 		Name:  "list",
 		Usage: "List all ephemeral databases and templates",

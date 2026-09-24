@@ -16,7 +16,7 @@ import (
 
 const (
 	TemplatePrefix = "pgxephemeraltest_template_"
-	DatabasePrefix = "pgxephemeraltest_db_"
+	DatabasePrefix = "pgepht_"
 )
 
 // Migrator applies the migration to the database.
@@ -153,7 +153,7 @@ func (f *DBManager) DropDB(ctx context.Context, db string) error {
 
 	if _, err := mc.Exec(
 		ctx,
-		strings.Join([]string{"DROP DATABASE", pgx.Identifier{db}.Sanitize(), "WITH (FORCE)"}, " "),
+		"DROP DATABASE "+pgx.Identifier{db}.Sanitize()+" WITH (FORCE)",
 	); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to drop database %s: %w", db, err)
 	}
@@ -220,10 +220,7 @@ func (f *DBManager) DropDBs(ctx context.Context, dbs []string) error {
 		var b pgx.Batch
 		for _, dbName := range chunk {
 			b.Queue(
-				strings.Join(
-					[]string{"DROP DATABASE", pgx.Identifier{dbName}.Sanitize(), "WITH (FORCE)"},
-					" ",
-				),
+				"DROP DATABASE " + pgx.Identifier{dbName}.Sanitize() + " WITH (FORCE)",
 			)
 		}
 
@@ -337,11 +334,10 @@ func (f *DBManager) mkTemplate(ctx context.Context, migrator Migrator, user, tem
 
 	// If template doesn't exist, it could fail at marking it as a template, yet
 	// succeed at creating it. Let's try to clean it up.
-	if _, err := mc.Exec(ctx, strings.Join([]string{
-		"DROP DATABASE IF EXISTS",
-		pgx.Identifier{template}.Sanitize(),
-		"WITH (FORCE)",
-	}, " ")); err != nil {
+	if _, err := mc.Exec(
+		ctx,
+		"DROP DATABASE IF EXISTS "+pgx.Identifier{template}.Sanitize()+" WITH (FORCE)",
+	); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to drop existing database template: %w", err)
 	}
 

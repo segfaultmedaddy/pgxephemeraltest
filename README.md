@@ -56,6 +56,8 @@ func TestMain(m *testing.M) {
 }
 ```
 
+By default, databases from failed tests are kept for debugging. Pass `pgxephemeraltest.WithKeepDatabaseOnFailure(false)` to `NewPoolFactoryFromConnString` to drop them even on failure.
+
 ### 3. Write isolated tests
 
 ```go
@@ -74,6 +76,8 @@ func TestUsers(t *testing.T) {
     require.Equal(t, "Alice", name)
 }
 ```
+
+Every `factory.Pool(t)` call creates a new database and pool, even for the same test. Reuse the returned pool to share state within a test.
 
 For more usage examples, check out the `examples` directory in the root of this repository.
 
