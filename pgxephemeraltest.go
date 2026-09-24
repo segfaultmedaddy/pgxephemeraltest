@@ -40,6 +40,12 @@ func WithCleanupTimeout(timeout time.Duration) FactoryOption {
 	return func(config *factoryOptions) { config.cleanupTimeout = timeout }
 }
 
+// WithKeepDatabaseOnFailure controls whether a failed test's database is kept
+// for debugging. The default is true; setting it to false drops the database.
+func WithKeepDatabaseOnFailure(keep bool) FactoryOption {
+	return func(config *factoryOptions) { config.shouldKeepDatabaseOnFailure = keep }
+}
+
 // assertNoError is a helper function that asserts that an error is nil.
 func assertNoError(t internaltesting.TB, err error, m ...string) {
 	t.Helper()
