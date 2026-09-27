@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	TemplatePrefix = "pgxephemeraltest_template_"
+	TemplatePrefix = "pgepht_template_"
 	DatabasePrefix = "pgepht_"
 )
 
@@ -236,7 +236,10 @@ func (f *DBManager) DropDBs(ctx context.Context, dbs []string) error {
 func (f *DBManager) ListDBs(ctx context.Context) ([]DBInfo, error) {
 	mc, err := f.newMaintenanceConn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("pgxephemeraltest: failed to acquire maintenance connection: %w", err)
+		return nil, fmt.Errorf(
+			"pgxephemeraltest: failed to acquire maintenance connection: %w",
+			err,
+		)
 	}
 	defer mc.Close(ctx)
 
@@ -312,7 +315,11 @@ func (f *DBManager) newMaintenanceConn(ctx context.Context) (*pgx.Conn, error) {
 //
 // mkTemplate is not thread-safe; attempting to run it concurrently will result in
 // connection lock (pgx busy conn).
-func (f *DBManager) mkTemplate(ctx context.Context, migrator Migrator, user, template string) error {
+func (f *DBManager) mkTemplate(
+	ctx context.Context,
+	migrator Migrator,
+	user, template string,
+) error {
 	mc, err := f.newMaintenanceConn(ctx)
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to get maintenance connection: %w", err)
@@ -380,7 +387,11 @@ func alterDatabaseIsTemplate(db string, isTemplate bool) string {
 // acquireLock acquires a postgres advisory lock.
 //
 // The caller is responsible for releasing the lock by calling the returned function.
-func acquireLock(ctx context.Context, conn *pgx.Conn, name string) (func(ctx context.Context) error, error) {
+func acquireLock(
+	ctx context.Context,
+	conn *pgx.Conn,
+	name string,
+) (func(ctx context.Context) error, error) {
 	h := fnv.New32()
 	h.Write([]byte(name))
 	lockNum := int64(h.Sum32())
