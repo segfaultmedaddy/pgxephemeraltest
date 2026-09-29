@@ -1,0 +1,844 @@
+
+[TestSplit/dollar_string_containing_its_own_fake_closer - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $a$text $a not closed yet$a$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:36, Line:1, Col:37},
+    },
+}
+---
+
+[TestSplit/empty_statements - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:4, Line:1, Col:5},
+        End:     sqlsplit.Location{Pos:13, Line:1, Col:14},
+    },
+}
+---
+
+[TestSplit/dollar-quoted_with_semicolon - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $$test; value$$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:23, Line:1, Col:24},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:24, Line:1, Col:25},
+        End:     sqlsplit.Location{Pos:33, Line:1, Col:34},
+    },
+}
+---
+
+[TestSplit/top-level_directive-style_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "---- enable-tx ----",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:19, Line:1, Col:20},
+    },
+    {
+        Content: "CREATE TABLE users (id int);",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:20, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:48, Line:2, Col:29},
+    },
+    {
+        Content: "---- create above / drop below ----",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:49, Line:3, Col:1},
+        End:     sqlsplit.Location{Pos:84, Line:3, Col:36},
+    },
+    {
+        Content: "DROP TABLE users;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:85, Line:4, Col:1},
+        End:     sqlsplit.Location{Pos:102, Line:4, Col:18},
+    },
+}
+---
+
+[TestSplit/simple_statements - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:9, Line:1, Col:10},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:10, Line:1, Col:11},
+        End:     sqlsplit.Location{Pos:19, Line:1, Col:20},
+    },
+}
+---
+
+[TestSplit/mid-statement_line_comment_stays_in_query - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1 -- inline\n, 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:23, Line:2, Col:5},
+    },
+}
+---
+
+[TestSplit/block_comment_containing_dollar_signs - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT /* $$ not a string $$ */ 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:34, Line:1, Col:35},
+    },
+    {
+        Content: "SELECT /* $tag$ also not $tag$ */ 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:35, Line:1, Col:36},
+        End:     sqlsplit.Location{Pos:71, Line:1, Col:72},
+    },
+}
+---
+
+[TestSplit/deeply_nested_block_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT /* level1 /* level2 /* level3 */ back to 2 */ back to 1 */ 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:68, Line:1, Col:69},
+    },
+}
+---
+
+[TestSplit/mid-statement_comment_stays_in_query - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT /* inline */ 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:22, Line:1, Col:23},
+    },
+}
+---
+
+[TestSplit/block_comment_containing_string-like_content - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT /* it's got 'quotes' and \"identifiers\" */ 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:51, Line:1, Col:52},
+    },
+}
+---
+
+[TestSplit/dollar-quoted_with_nested_dollars - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $outer$test $$ value$outer$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:35, Line:1, Col:36},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:36, Line:1, Col:37},
+        End:     sqlsplit.Location{Pos:45, Line:1, Col:46},
+    },
+}
+---
+
+[TestSplit/top-level_comment_between_statements - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:9, Line:1, Col:10},
+    },
+    {
+        Content: "-- middle comment",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:10, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:27, Line:2, Col:18},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:28, Line:3, Col:1},
+        End:     sqlsplit.Location{Pos:37, Line:3, Col:10},
+    },
+}
+---
+
+[TestSplit/plpgsql_function_with_nested_dollar_quotes_and_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "CREATE FUNCTION complex_func() RETURNS text AS $body$\nBEGIN\n    -- This is a line comment inside the function\n    /* This is a block comment\n       spanning multiple lines */\n    RETURN $inner$It's a nested \"string\" with; semicolons$inner$;\nEND;\n$body$ LANGUAGE plpgsql;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:270, Line:8, Col:25},
+    },
+}
+---
+
+[TestSplit/nested_multi-line_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:9, Line:1, Col:10},
+    },
+    {
+        Content: "/* outer /* inner */ still outer */",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:10, Line:1, Col:11},
+        End:     sqlsplit.Location{Pos:45, Line:1, Col:46},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:46, Line:1, Col:47},
+        End:     sqlsplit.Location{Pos:55, Line:1, Col:56},
+    },
+}
+---
+
+[TestSplit/plpgsql_function_with_dynamic_SQL - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "CREATE FUNCTION dynamic_query(tbl text) RETURNS SETOF record AS $$\nBEGIN\n    RETURN QUERY EXECUTE 'SELECT * FROM ' || quote_ident(tbl) || ' WHERE id > $1' USING 10;\nEND;\n$$ LANGUAGE plpgsql;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:190, Line:5, Col:21},
+    },
+}
+---
+
+[TestSplit/multiple_top-level_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "-- first comment",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:16, Line:1, Col:17},
+    },
+    {
+        Content: "-- second comment",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:17, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:34, Line:2, Col:18},
+    },
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:35, Line:3, Col:1},
+        End:     sqlsplit.Location{Pos:44, Line:3, Col:10},
+    },
+}
+---
+
+[TestSplit/string_containing_dollar_signs - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 'price is $5 or $$10';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:29, Line:1, Col:30},
+    },
+}
+---
+
+[TestSplit/escaped_quote_in_identifier - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT \"test\"\"name\";",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:20, Line:1, Col:21},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:21, Line:1, Col:22},
+        End:     sqlsplit.Location{Pos:30, Line:1, Col:31},
+    },
+}
+---
+
+[TestSplit/multi-line_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:9, Line:1, Col:10},
+    },
+    {
+        Content: "/* comment\nspanning lines */",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:10, Line:1, Col:11},
+        End:     sqlsplit.Location{Pos:38, Line:2, Col:18},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:39, Line:2, Col:19},
+        End:     sqlsplit.Location{Pos:48, Line:2, Col:28},
+    },
+}
+---
+
+[TestSplit/complex_nested_quoting - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "CREATE FUNCTION test() RETURNS text AS $func$\nBEGIN\n    RETURN $inner$It's a \"test\"; value$inner$;\nEND;\n$func$ LANGUAGE plpgsql;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:128, Line:5, Col:25},
+    },
+}
+---
+
+[TestSplit/ALTER_TABLE_with_multiple_operations - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "ALTER TABLE users ADD COLUMN email text, ADD COLUMN created_at timestamp DEFAULT NOW(), DROP COLUMN old_field;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:110, Line:1, Col:111},
+    },
+}
+---
+
+[TestSplit/quoted_identifiers - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT \"table\";",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:15, Line:1, Col:16},
+    },
+    {
+        Content: "SELECT \"col;umn\";",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:16, Line:1, Col:17},
+        End:     sqlsplit.Location{Pos:33, Line:1, Col:34},
+    },
+}
+---
+
+[TestSplit/identifier_resembling_keyword - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT \"SELECT\", \"FROM\", \"WHERE\" FROM \"table\";",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:46, Line:1, Col:47},
+    },
+}
+---
+
+[TestSplit/identifier_containing_all_special_chars - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT \"table;name--with/*special*/chars\" FROM \"test\";",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:54, Line:1, Col:55},
+    },
+}
+---
+
+[TestSplit/multiple_escape_sequences - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT E'line1\\nline2\\ttab\\\\backslash\\'quote';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:46, Line:1, Col:47},
+    },
+}
+---
+
+[TestSplit/DO_block_with_anonymous_function - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "DO $$\nDECLARE\n    r record;\nBEGIN\n    FOR r IN SELECT * FROM users WHERE active = false\n    LOOP\n        RAISE NOTICE 'Inactive user: %', r.name;\n    END LOOP;\nEND;\n$$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:168, Line:10, Col:4},
+    },
+}
+---
+
+[TestSplit/escape_string_syntax - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT E'test\\nvalue';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:22, Line:1, Col:23},
+    },
+    {
+        Content: "SELECT 'normal';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:23, Line:1, Col:24},
+        End:     sqlsplit.Location{Pos:39, Line:1, Col:40},
+    },
+}
+---
+
+[TestSplit/plpgsql_function_with_exception_handling - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "CREATE FUNCTION safe_divide(a int, b int) RETURNS int AS $$\nBEGIN\n    RETURN a / b;\nEXCEPTION\n    WHEN division_by_zero THEN\n        RETURN NULL;\nEND;\n$$ LANGUAGE plpgsql;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:171, Line:8, Col:21},
+    },
+}
+---
+
+[TestSplit/CREATE_TRIGGER_with_function_reference - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "CREATE FUNCTION update_timestamp() RETURNS trigger AS $$\nBEGIN\n    NEW.updated_at = NOW();\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:132, Line:6, Col:21},
+    },
+    {
+        Content: "CREATE TRIGGER set_timestamp\n    BEFORE UPDATE ON users\n    FOR EACH ROW\n    EXECUTE FUNCTION update_timestamp();",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:133, Line:7, Col:1},
+        End:     sqlsplit.Location{Pos:246, Line:10, Col:41},
+    },
+}
+---
+
+[TestSplit/multiple_different_dollar_tags_in_sequence - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $a$one$a$, $b$two$b$, $$three$$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:39, Line:1, Col:40},
+    },
+}
+---
+
+[TestSplit/dollar-quoted_with_tag - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $tag$test$tag$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:22, Line:1, Col:23},
+    },
+    {
+        Content: "SELECT $foo$it's$foo$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:23, Line:1, Col:24},
+        End:     sqlsplit.Location{Pos:45, Line:1, Col:46},
+    },
+}
+---
+
+[TestSplit/single-line_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:9, Line:1, Col:10},
+    },
+    {
+        Content: "-- comment",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:10, Line:1, Col:11},
+        End:     sqlsplit.Location{Pos:20, Line:1, Col:21},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:21, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:30, Line:2, Col:10},
+    },
+}
+---
+
+[TestSplit/top-level_block_comment_standalone - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "/* top-level block comment */",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:29, Line:1, Col:30},
+    },
+}
+---
+
+[TestSplit/dollar_tag_resembling_keyword - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $SELECT$content with; semicolon$SELECT$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:47, Line:1, Col:48},
+    },
+}
+---
+
+[TestSplit/trailing_statement_without_semicolon - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:9, Line:1, Col:10},
+    },
+    {
+        Content: "SELECT 2",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:10, Line:1, Col:11},
+        End:     sqlsplit.Location{Pos:18, Line:1, Col:19},
+    },
+}
+---
+
+[TestSplit/top-level_line_comment_before_statement - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "-- top-level comment",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:20, Line:1, Col:21},
+    },
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:21, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:30, Line:2, Col:10},
+    },
+}
+---
+
+[TestSplit/adjacent_strings - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 'first' 'second';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:24, Line:1, Col:25},
+    },
+    {
+        Content: "SELECT 'it''s escaped';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:25, Line:1, Col:26},
+        End:     sqlsplit.Location{Pos:48, Line:1, Col:49},
+    },
+}
+---
+
+[TestSplit/semicolon_in_string - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 'test; value';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:21, Line:1, Col:22},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:22, Line:1, Col:23},
+        End:     sqlsplit.Location{Pos:31, Line:1, Col:32},
+    },
+}
+---
+
+[TestSplit/top-level_line_comment_standalone - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "-- this is a top-level comment",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:30, Line:1, Col:31},
+    },
+}
+---
+
+[TestSplit/CREATE_FUNCTION_with_dollar_quoting - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "CREATE FUNCTION test() RETURNS integer AS $$\nBEGIN\n    RETURN 1;\nEND;\n$$ LANGUAGE plpgsql;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:90, Line:5, Col:21},
+    },
+    {
+        Content: "SELECT 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:91, Line:6, Col:1},
+        End:     sqlsplit.Location{Pos:100, Line:6, Col:10},
+    },
+}
+---
+
+[TestSplit/mixed_line_and_block_comments - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:9, Line:1, Col:10},
+    },
+    {
+        Content: "-- line comment /* not a block",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:10, Line:1, Col:11},
+        End:     sqlsplit.Location{Pos:40, Line:1, Col:41},
+    },
+    {
+        Content: "SELECT /* block comment -- not a line */ 2;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:41, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:84, Line:2, Col:44},
+    },
+}
+---
+
+[TestSplit/CREATE_TYPE_with_multiline - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "CREATE TYPE mood AS ENUM (\n    'sad',\n    'ok',\n    'happy'\n);",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:62, Line:5, Col:3},
+    },
+    {
+        Content: "CREATE TYPE address AS (\n    street text,\n    city text,\n    zip text\n);",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:63, Line:6, Col:1},
+        End:     sqlsplit.Location{Pos:135, Line:10, Col:3},
+    },
+}
+---
+
+[TestSplit/single-quoted_strings - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 'test';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:14, Line:1, Col:15},
+    },
+    {
+        Content: "SELECT 'it''s';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:15, Line:1, Col:16},
+        End:     sqlsplit.Location{Pos:30, Line:1, Col:31},
+    },
+}
+---
+
+[TestSplit/top-level_block_comment_before_statement - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "/* top-level block comment */",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:29, Line:1, Col:30},
+    },
+    {
+        Content: "SELECT 1;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:30, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:39, Line:2, Col:10},
+    },
+}
+---
+
+[TestSplit/string_containing_comment-like_content - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT '/* not a comment */';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:29, Line:1, Col:30},
+    },
+    {
+        Content: "SELECT '-- also not a comment';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:30, Line:1, Col:31},
+        End:     sqlsplit.Location{Pos:61, Line:1, Col:62},
+    },
+}
+---
+
+[TestSplit/CREATE_TABLE_with_comments_and_quoted_identifier - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "-- Create a table for user data",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:31, Line:1, Col:32},
+    },
+    {
+        Content: "/* This table contains all user-related data\n   for the application */",
+        Type:    "comment",
+        Start:   sqlsplit.Location{Pos:32, Line:2, Col:1},
+        End:     sqlsplit.Location{Pos:102, Line:3, Col:26},
+    },
+    {
+        Content: "CREATE TABLE \"user-data\" (\n    id serial PRIMARY KEY,\n    \"full-name\" text NOT NULL\n);",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:103, Line:4, Col:1},
+        End:     sqlsplit.Location{Pos:189, Line:7, Col:3},
+    },
+}
+---
+
+[TestSplit/unicode_in_strings_and_identifiers - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT 'émoji 🎉 café';",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:22, Line:1, Col:23},
+    },
+    {
+        Content: "SELECT \"tëst_tàble\" FROM \"schëma\".\"tãble\";",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:23, Line:1, Col:24},
+        End:     sqlsplit.Location{Pos:65, Line:1, Col:66},
+    },
+}
+---
+
+[TestSplit/dollar-quoted_strings - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $$test$$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:16, Line:1, Col:17},
+    },
+    {
+        Content: "SELECT $$it's$$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:17, Line:1, Col:18},
+        End:     sqlsplit.Location{Pos:33, Line:1, Col:34},
+    },
+}
+---
+
+[TestSplit/empty_dollar_string - 1]
+[]sqlsplit.Stmt{
+    {
+        Content: "SELECT $$$$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:0, Line:1, Col:1},
+        End:     sqlsplit.Location{Pos:12, Line:1, Col:13},
+    },
+    {
+        Content: "SELECT $tag$$tag$;",
+        Type:    "query",
+        Start:   sqlsplit.Location{Pos:13, Line:1, Col:14},
+        End:     sqlsplit.Location{Pos:31, Line:1, Col:32},
+    },
+}
+---
+
+[TestStmtHighlight/single_statement_single_line - 1]
+1 | SELECT 1;
+
+---
+
+[TestStmtHighlight/long_function_collapses_middle - 1]
+1 | CREATE FUNCTION test() RETURNS text AS $body$
+2 | BEGIN
+  | ...
+7 | END;
+8 | $body$ LANGUAGE plpgsql;
+
+9 | SELECT 1;
+
+---
+
+[TestStmtHighlight/two_single-line_statements - 1]
+1 | SELECT 1;
+
+2 | SELECT 2;
+
+---
+
+[TestStmtHighlight/multiple_statements_with_blank_lines - 1]
+1 | SELECT 1;
+
+3 | SELECT 2;
+
+5 | CREATE TABLE t (
+6 |   id int
+7 | );
+
+---
+
+[TestStmtHighlight/many_short_statements - 1]
+1 | SELECT 1;
+
+2 | SELECT 2;
+
+3 | SELECT 3;
+
+4 | SELECT 4;
+
+5 | SELECT 5;
+
+6 | SELECT 6;
+
+7 | SELECT 7;
+
+8 | SELECT 8;
+
+9 | SELECT 9;
+
+10 | SELECT 10;
+
+---
+
+[TestStmtHighlight/multiline_statement_followed_by_single_line - 1]
+1 | CREATE TABLE users (
+2 |   id int,
+3 |   name text
+4 | );
+
+5 | SELECT 1;
+
+---
+
+[TestStmtHighlight/comment_then_multiline_statement - 1]
+1 | ---- enable-tx ----
+
+2 | CREATE TABLE users (
+3 |   id int,
+4 |   name text
+5 | );
+
+---
