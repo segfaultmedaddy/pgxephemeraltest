@@ -8,7 +8,8 @@ import (
 	"io/fs"
 
 	"github.com/jackc/pgx/v5"
-	"go.inout.gg/conduit/pkg/sqlsplit"
+
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/pkg/sqlsplit"
 )
 
 type FileMigrator struct {
