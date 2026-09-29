@@ -1,8 +1,8 @@
-module go.segfaultmedaddy.com/pgxephemeraltest
+module go.segfaultmedaddy.com/pgxephemeraltest/v2
 
 go 1.26.0
 
-tool go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral
+tool go.segfaultmedaddy.com/pgxephemeraltest/v2/cmd/pgxephemeral
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0

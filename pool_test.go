@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/testutil"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/internaltesting"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/testutil"
 )
 
 func TestNewPoolFactory(t *testing.T) {

@@ -12,7 +12,7 @@ When using ephemeral databases, the package leverages PostgreSQL [templates](htt
 ## Usage
 
 ```sh
-$ go get go.segfaultmedaddy.com/pgxephemeraltest
+$ go get go.segfaultmedaddy.com/pgxephemeraltest/v2
 ```
 
 ### 1. Define your migrator

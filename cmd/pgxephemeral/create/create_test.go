@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/dbmanager"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/migrator"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/testutil"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/dbmanager"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/migrator"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/testutil"
 )
 
 func TestCreate(t *testing.T) {

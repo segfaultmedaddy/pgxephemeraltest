@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/dbmanager"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/dbmanager"
 )
 
 const (

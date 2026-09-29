@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urfave/cli/v3"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/cmdutil"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/dbmanager"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/migrator"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/cmd/pgxephemeral/cmdutil"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/dbmanager"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/migrator"
 )
 
 func New() *cli.Command {

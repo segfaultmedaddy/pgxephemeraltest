@@ -7,9 +7,9 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/create"
-	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/drop"
-	"go.segfaultmedaddy.com/pgxephemeraltest/cmd/pgxephemeral/list"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/cmd/pgxephemeral/create"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/cmd/pgxephemeral/drop"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/cmd/pgxephemeral/list"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import "context"
 // It copied from the testing package.
 //
 //nolint:interfacebloat // copied from testing package.
-//go:generate mockgen -destination=mock_testing.go -package internaltesting go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting TB
+//go:generate mockgen -destination=mock_testing.go -package internaltesting go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/internaltesting TB
 type TB interface {
 	Cleanup(func())
 	Error(args ...any)

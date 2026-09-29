@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2"
 )
 
 var _ pgxephemeraltest.Migrator = (*migrator)(nil)

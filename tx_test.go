@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/testutil"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/testutil"
 )
 
 func TestTxFactory(t *testing.T) {

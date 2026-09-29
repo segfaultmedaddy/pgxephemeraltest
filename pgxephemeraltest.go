@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/internaltesting"
 )
 
 var (

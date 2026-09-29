@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/dbmanager"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/internaltesting"
-	"go.segfaultmedaddy.com/pgxephemeraltest/internal/namegenerator"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/dbmanager"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/internaltesting"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/namegenerator"
 )
 
 type factoryOptions struct {

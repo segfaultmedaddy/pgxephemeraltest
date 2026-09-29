@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
-	"go.segfaultmedaddy.com/pgxephemeraltest"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2"
 )
 
 var factory *pgxephemeraltest.PoolFactory //nolint:gochecknoglobals
