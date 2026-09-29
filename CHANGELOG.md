@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.0
+
+### Added
+
+- **SQL statement splitter:** `pkg/sqlsplit` splits PostgreSQL SQL into statements, tracks their locations, and formats statement highlights.
+
+### Changed
+
+- **SQL migration parsing:** The migrator now uses `pkg/sqlsplit`, removing the `go.inout.gg/conduit` dependency.
+
 ## v2.0.0
 
 ### Breaking changes
