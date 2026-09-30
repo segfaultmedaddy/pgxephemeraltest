@@ -81,6 +81,25 @@ Every `factory.Pool(t)` call creates a new database and pool, even for the same 
 
 For more usage examples, check out the `examples` directory in the root of this repository.
 
+## Filesystem migrations
+
+Use `pkg/migrator` to build a migrator from SQL files on disk or an embedded filesystem:
+
+```go
+import "go.segfaultmedaddy.com/pgxephemeraltest/v2/pkg/migrator"
+
+m, err := migrator.FromFS(os.DirFS("migrations"))
+if err != nil {
+    panic(err)
+}
+
+factory, err := pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, m)
+```
+
+`FromFS` recursively loads regular `.sql` files and executes them in lexicographic order of their full paths. Statements within each file are executed in order, and migration stops at the first error. Use `fs.Sub` to select a subdirectory of an embedded filesystem, or `migrator.FromFile(fsys, "schema.sql")` to load a single file.
+
+The migrator snapshots file contents when constructed. Its hash includes the ordered filenames and contents, so changing the migration set produces a different database template.
+
 ## How It Works
 
 Both approaches provide isolation, with different trade-offs:

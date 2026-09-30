@@ -3,11 +3,29 @@ package testutil
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 )
+
+// Conn connects to the test database and closes the connection when
+// the test completes, using a bounded background context for cleanup.
+func Conn(tb testing.TB) *pgx.Conn {
+	tb.Helper()
+
+	conn, err := pgx.Connect(tb.Context(), ConnString(tb))
+	require.NoError(tb, err)
+	tb.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		require.NoError(tb, conn.Close(ctx))
+	})
+
+	return conn
+}
 
 // RequireConnect connects to db with a copy of config and fails the test if it cannot.
 // The caller must close the returned connection.
