@@ -5,10 +5,13 @@
 ### Added
 
 - **SQL statement splitter:** `pkg/sqlsplit` splits PostgreSQL SQL into statements, tracks their locations, and formats statement highlights.
+- **Filesystem migrator:** Public `pkg/migrator` provides `FSMigrator`, with `FromFS` for recursively loading regular `.sql` files in lexicographic full-path order and `FromFile` for a single migration. Files are snapshotted when the migrator is constructed and applied sequentially.
 
 ### Changed
 
 - **SQL migration parsing:** The migrator now uses `pkg/sqlsplit`, removing the `go.inout.gg/conduit` dependency.
+- **Migration template hashes:** Hashes include ordered filenames and file contents, so changes to either produce a different database template.
+- **Migration errors:** Failures identify the migration file and, for execution errors, the statement location. Migration stops at the first error.
 
 ## v2.0.0
 
