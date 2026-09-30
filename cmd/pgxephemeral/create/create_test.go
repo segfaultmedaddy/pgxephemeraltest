@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/dbmanager"
-	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/migrator"
 	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/testutil"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/pkg/migrator"
 )
 
 func TestCreate(t *testing.T) {
@@ -34,10 +34,10 @@ func TestCreate(t *testing.T) {
 		fsys := fstest.MapFS{
 			"schema.sql": {Data: []byte(testutil.KVSchema + "\nSELECT " + id + ";")},
 		}
-		fileMigrator, err := migrator.FromFile(fsys, "schema.sql")
+		fsMigrator, err := migrator.FromFile(fsys, "schema.sql")
 		require.NoError(t, err)
 
-		tpl := dbmanager.TemplateName(config.ConnConfig, fileMigrator)
+		tpl := dbmanager.TemplateName(config.ConnConfig, fsMigrator)
 		db := dbmanager.DatabasePrefix + "sql_" + id
 
 		// Act

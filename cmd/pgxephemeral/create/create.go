@@ -11,7 +11,7 @@ import (
 
 	"go.segfaultmedaddy.com/pgxephemeraltest/v2/cmd/pgxephemeral/cmdutil"
 	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/dbmanager"
-	"go.segfaultmedaddy.com/pgxephemeraltest/v2/internal/migrator"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2/pkg/migrator"
 )
 
 func New() *cli.Command {
@@ -46,8 +46,7 @@ func New() *cli.Command {
 				return cmdutil.Write(nil, fmt.Errorf("get current working directory: %w", err))
 			}
 
-			//nolint:forcetypeassert // os.DirFS for real dirs implements fs.ReadFileFS.
-			fsys := os.DirFS(cwd).(fs.ReadFileFS)
+			fsys := os.DirFS(cwd)
 
 			return cmdutil.Write(create(ctx, fsys, args{
 				ConnURL:      cmd.String("conn-url"),
@@ -66,7 +65,7 @@ type args struct {
 	FromSQL      string
 }
 
-func create(ctx context.Context, fsys fs.ReadFileFS, args args) (any, error) {
+func create(ctx context.Context, fsys fs.FS, args args) (any, error) {
 	config, err := pgxpool.ParseConfig(args.ConnURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse connection URL: %w", err)
@@ -81,13 +80,13 @@ func create(ctx context.Context, fsys fs.ReadFileFS, args args) (any, error) {
 	ret := make([]dbmanager.DBInfo, 0, 2)
 
 	if args.FromSQL != "" {
-		fileMigrator, err := migrator.FromFile(fsys, args.FromSQL)
+		fsMigrator, err := migrator.FromFile(fsys, args.FromSQL)
 		if err != nil {
 			return nil, fmt.Errorf("load SQL migration file %q: %w", args.FromSQL, err)
 		}
 
-		template = dbmanager.TemplateName(config.ConnConfig, fileMigrator)
-		if err := m.Init(ctx, fileMigrator, template); err != nil {
+		template = dbmanager.TemplateName(config.ConnConfig, fsMigrator)
+		if err := m.Init(ctx, fsMigrator, template); err != nil {
 			return nil, fmt.Errorf("initialize template %q: %w", template, err)
 		}
 
