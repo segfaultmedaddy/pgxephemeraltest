@@ -21,33 +21,40 @@ const KVSchema = `CREATE TABLE IF NOT EXISTS kv (
 );`
 
 type Migrator struct {
-	Schema string
-	HashID string
-	calls  atomic.Int32
+	// MigrateFunc overrides schema execution when set. Calls counts every invocation, including failures.
+	MigrateFunc func(context.Context, *pgx.Conn) error
+	Schema      string
+	HashID      string
+	calls       atomic.Int32
 }
 
 func NewNoopMigrator() *Migrator {
 	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
-	return &Migrator{Schema: "", HashID: "noop"}
+	return &Migrator{MigrateFunc: nil, Schema: "", HashID: "noop"}
 }
 
 func NewKVMigrator() *Migrator {
 	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
 	return &Migrator{
-		Schema: KVSchema,
-		HashID: "kv" + strconv.FormatInt(rand.Int64(), 10), // #nosec G404
+		MigrateFunc: nil,
+		Schema:      KVSchema,
+		HashID:      "kv" + strconv.FormatInt(rand.Int64(), 10), // #nosec G404
 	}
 }
 
 func NewMigrator(schema, hash string) *Migrator {
 	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
-	return &Migrator{Schema: schema, HashID: hash}
+	return &Migrator{MigrateFunc: nil, Schema: schema, HashID: hash}
 }
 
 func (m *Migrator) Hash() string { return m.HashID }
 
 func (m *Migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
 	m.calls.Add(1)
+
+	if m.MigrateFunc != nil {
+		return m.MigrateFunc(ctx, conn)
+	}
 
 	if m.Schema == "" {
 		return nil

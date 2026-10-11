@@ -39,6 +39,40 @@ func TestTemplateName(t *testing.T) {
 	assert.NotEqual(t, templateName, dbmanager.TemplateName(config2, m1))
 }
 
+func TestDerivedTemplateName(t *testing.T) {
+	t.Parallel()
+
+	t.Run("it distinguishes parent and migration hash boundaries", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		m1 := testutil.NewMigrator("", "bc")
+		m2 := testutil.NewMigrator("", "c")
+
+		// Act
+		n1 := dbmanager.DerivedTemplateName("a", m1)
+		n2 := dbmanager.DerivedTemplateName("ab", m2)
+
+		// Assert
+		assert.NotEqual(t, n1, n2, "parent and migration hash boundaries must be unambiguous")
+	})
+
+	t.Run("it bounds template names regardless of input length", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		parent := strings.Repeat("parent", 100)
+		migrator := testutil.NewMigrator("", strings.Repeat("hash", 100))
+
+		// Act
+		name := dbmanager.DerivedTemplateName(parent, migrator)
+
+		// Assert
+		assert.True(t, strings.HasPrefix(name, dbmanager.TemplatePrefix))
+		assert.LessOrEqual(t, len(name), 63)
+	})
+}
+
 func TestDBManager(t *testing.T) {
 	t.Parallel()
 
@@ -48,6 +82,20 @@ func TestDBManager(t *testing.T) {
 
 	m, err := dbmanager.New(ctx, config)
 	require.NoError(t, err)
+
+	t.Run("it rejects empty template names", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		dbName := "empty_template"
+
+		// Act
+		db, err := m.CreateDB(t.Context(), "", dbName)
+
+		// Assert
+		require.ErrorContains(t, err, "template name must not be empty")
+		assert.Empty(t, db)
+	})
 
 	t.Run("it initializes template once and handles lifecycle", func(t *testing.T) {
 		t.Parallel()

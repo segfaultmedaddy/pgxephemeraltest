@@ -100,6 +100,36 @@ factory, err := pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, m
 
 The migrator snapshots file contents when constructed. Its hash includes the ordered filenames and contents, so changing the migration set produces a different database template.
 
+## Derived templates
+
+Use `Derive` to clone an initialized factory's template and apply a different migrator on top:
+
+```go
+parent, err := pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, baseMigrator)
+if err != nil {
+    panic(err)
+}
+
+child, err := parent.Derive(ctx, featureMigrator,
+    pgxephemeraltest.WithKeepDatabaseOnFailure(false),
+)
+if err != nil {
+    panic(err)
+}
+
+pool := child.Pool(t) // contains the base schema/data plus the feature migration
+```
+
+Only the child migrator runs during derivation; the parent is not modified or migrated again. The child migrator may be a different implementation, including `pkg/migrator.FSMigrator`. A derived factory can itself be a parent for further derivation.
+
+Child templates are cached by the parent template's identity and the child migrator's `Hash()`. Changing a parent migration therefore changes descendant template identities, even if their local migrations remain the same. `Hash()` should identify only the local migration. Child migrators must account for inherited schema, data, and migration-history tables, and must commit their changes and close any additional database connections before returning.
+
+`Derive` is safe to call concurrently. Creation of the same child template is serialized using a PostgreSQL advisory lock, including across processes. Different child templates can be cloned and migrated concurrently, even when they share a parent. A migrator instance reused across different templates must support concurrent calls.
+
+The child inherits a copy of its parent's connection configuration, including its maintenance database. Cleanup and failure-retention options are **not** inherited: constructor defaults apply unless overridden in `Derive`. All processes sharing templates must use the same maintenance database, because PostgreSQL advisory locks are database-scoped.
+
+Newly initialized templates reject direct connections once migration is complete; use `Pool(t)` or clone a template for inspection. Older cached templates must also remain idle while cloning. Templates persist as reusable caches, and test cleanup drops only ephemeral databases. Do not administratively drop templates during active initialization; existing children are independent copies and remain usable after a parent is dropped.
+
 ## How It Works
 
 Both approaches provide isolation, with different trade-offs:

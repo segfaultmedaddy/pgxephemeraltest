@@ -64,6 +64,16 @@ func NewPoolFactory(
 	migrator Migrator,
 	opts ...FactoryOption,
 ) (*PoolFactory, error) {
+	return newPoolFactory(ctx, config, migrator, "", opts...)
+}
+
+func newPoolFactory(
+	ctx context.Context,
+	config *pgxpool.Config,
+	migrator Migrator,
+	parent string,
+	opts ...FactoryOption,
+) (*PoolFactory, error) {
 	var options factoryOptions
 
 	options.shouldKeepDatabaseOnFailure = true
@@ -84,9 +94,14 @@ func NewPoolFactory(
 		return nil, fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
 	}
 
-	template := dbmanager.TemplateName(config.ConnConfig, migrator)
+	var template string
+	if parent == "" {
+		template = dbmanager.TemplateName(config.ConnConfig, migrator)
+	} else {
+		template = dbmanager.DerivedTemplateName(parent, migrator)
+	}
 
-	if err := m.Init(ctx, migrator, template); err != nil {
+	if err := m.InitFrom(ctx, migrator, template, parent); err != nil {
 		return nil, fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
 	}
 
@@ -116,6 +131,36 @@ func NewPoolFactoryFromConnString(
 	}
 
 	return NewPoolFactory(ctx, config, migrator, opts...)
+}
+
+// Derive creates a factory whose template is cloned from f's template and then
+// migrated using only the supplied migrator. The parent template is not modified.
+// A derived factory can itself be used as a parent for further derivation.
+//
+// The template is cached by the parent template name and the migrator's Hash.
+// Concurrent calls for the same template are serialized by a PostgreSQL advisory
+// lock; different child templates can be initialized in parallel, even when they
+// share a parent. A migrator shared across different templates must support
+// concurrent calls.
+//
+// The child inherits a copy of f's connection configuration, including its
+// maintenance database. Factory options are not inherited: the usual constructor
+// defaults apply unless overridden by opts.
+func (f *PoolFactory) Derive(
+	ctx context.Context,
+	migrator Migrator,
+	opts ...FactoryOption,
+) (*PoolFactory, error) {
+	child, err := newPoolFactory(ctx, f.config, migrator, f.template, opts...)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"pgxephemeraltest: failed to derive factory from template %q: %w",
+			f.template,
+			err,
+		)
+	}
+
+	return child, nil
 }
 
 // Template returns the template name used to create ephemeral databases.

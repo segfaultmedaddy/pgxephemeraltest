@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Derived templates:** `PoolFactory.Derive` clones a parent template and applies a separate migrator. Parent-aware cache keys support nested derivation, and destination advisory locks coordinate concurrent initialization across processes without serializing siblings sharing a parent.
+
+### Changed
+
+- **Template publication:** Newly initialized templates are disconnected before publication and reject direct connections afterward. Failed initialization attempts clean up unfinished databases while holding their advisory lock.
+
 ## v2.1.0
 
 ### Added
