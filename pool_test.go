@@ -1,15 +1,11 @@
 package pgxephemeraltest_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/url"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -207,10 +203,20 @@ func TestPoolFactory(t *testing.T) {
 		p2 := f.Pool(t)
 
 		// Act
-		_, err := p1.Exec(t.Context(), "INSERT INTO kv (key, value) VALUES ($1, $2)", "key1", "value1")
+		_, err := p1.Exec(
+			t.Context(),
+			"INSERT INTO kv (key, value) VALUES ($1, $2)",
+			"key1",
+			"value1",
+		)
 		require.NoError(t, err)
 
-		_, err = p2.Exec(t.Context(), "INSERT INTO kv (key, value) VALUES ($1, $2)", "key2", "value2")
+		_, err = p2.Exec(
+			t.Context(),
+			"INSERT INTO kv (key, value) VALUES ($1, $2)",
+			"key2",
+			"value2",
+		)
 		require.NoError(t, err)
 
 		// Assert
@@ -350,14 +356,11 @@ func TestPoolFactory_DatabaseNames(t *testing.T) {
 		assert.LessOrEqual(t, len(name), 63)
 		assert.True(t, strings.HasPrefix(name, namePrefix+"_"))
 		assert.True(t, strings.HasSuffix(name, "_3"))
-		assert.True(t, strings.HasPrefix(url.QueryEscape(t.Name()), name[len(namePrefix)+1:len(name)-2]))
+		assert.True(
+			t,
+			strings.HasPrefix(url.QueryEscape(t.Name()), name[len(namePrefix)+1:len(name)-2]),
+		)
 	})
-}
-
-func deriveTestHash(t *testing.T) string {
-	t.Helper()
-
-	return t.Name() + "-" + strconv.FormatInt(rand.Int64(), 10) // #nosec G404
 }
 
 func cleanupDatabase(t *testing.T, config *pgxpool.Config, db string) {
@@ -380,59 +383,68 @@ func TestPoolFactory_Derive(t *testing.T) {
 	config := testutil.PoolConfig(t)
 	parentMigrator := testutil.NewMigrator(
 		testutil.KVSchema+"INSERT INTO kv VALUES ('parent', 'base');",
-		deriveTestHash(t),
+		t.Name()+"-"+strconv.FormatInt(rand.Int64(), 10), // #nosec G404
 	)
 	parent, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, parentMigrator)
 	require.NoError(t, err)
 	cleanupDatabase(t, config, parent.Template())
 
-	t.Run("it inherits parent schema and data and applies a different migrator", func(t *testing.T) {
-		t.Parallel()
+	t.Run(
+		"it inherits parent schema and data and applies a different migrator",
+		func(t *testing.T) {
+			t.Parallel()
 
-		// Arrange
-		childMigrator, err := migrator.FromFS(fstest.MapFS{
-			"feature.sql": {
-				Data: []byte(
-					"CREATE TABLE feature (id INTEGER); INSERT INTO kv VALUES ('child', 'feature');",
-				),
-			},
-		})
-		require.NoError(t, err)
+			// Arrange
+			childMigrator, err := migrator.FromFS(fstest.MapFS{
+				"feature.sql": {
+					Data: []byte(
+						"CREATE TABLE feature (id INTEGER); INSERT INTO kv VALUES ('child', 'feature');",
+					),
+				},
+			})
+			require.NoError(t, err)
 
-		// Act
-		child, err := parent.Derive(t.Context(), childMigrator)
-		require.NoError(t, err)
-		cleanupDatabase(t, config, child.Template())
-		pool := child.Pool(t)
+			// Act
+			child, err := parent.Derive(t.Context(), childMigrator)
+			require.NoError(t, err)
+			cleanupDatabase(t, config, child.Template())
+			pool := child.Pool(t)
 
-		// Assert
-		assert.NotEqual(t, parent.Template(), child.Template())
-		assert.Equal(t, int32(1), parentMigrator.Calls(), "parent migration must not be replayed")
+			// Assert
+			assert.NotEqual(t, parent.Template(), child.Template())
+			assert.Equal(
+				t,
+				int32(1),
+				parentMigrator.Calls(),
+				"parent migration must not be replayed",
+			)
 
-		rows, err := pool.Query(t.Context(), "SELECT key, value FROM kv ORDER BY key")
-		require.NoError(t, err)
-		testutil.AssertKVRows(t, rows, []testutil.KV{
-			{Key: "child", Value: "feature"},
-			{Key: "parent", Value: "base"},
-		})
+			rows, err := pool.Query(t.Context(), "SELECT key, value FROM kv ORDER BY key")
+			require.NoError(t, err)
+			testutil.AssertKVRows(t, rows, []testutil.KV{
+				{Key: "child", Value: "feature"},
+				{Key: "parent", Value: "base"},
+			})
 
-		var count int
+			var count int
 
-		err = pool.QueryRow(t.Context(), "SELECT count(*) FROM feature").Scan(&count)
-		require.NoError(t, err)
-		assert.Zero(t, count)
+			err = pool.QueryRow(t.Context(), "SELECT count(*) FROM feature").Scan(&count)
+			require.NoError(t, err)
+			assert.Zero(t, count)
 
-		parentPool := parent.Pool(t)
-		rows, err = parentPool.Query(t.Context(), "SELECT key, value FROM kv ORDER BY key")
-		require.NoError(t, err)
-		testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "parent", Value: "base"}})
+			parentPool := parent.Pool(t)
+			rows, err = parentPool.Query(t.Context(), "SELECT key, value FROM kv ORDER BY key")
+			require.NoError(t, err)
+			testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "parent", Value: "base"}})
 
-		var hasFeature bool
+			var hasFeature bool
 
-		err = parentPool.QueryRow(t.Context(), "SELECT to_regclass('feature') IS NOT NULL").Scan(&hasFeature)
-		require.NoError(t, err)
-		assert.False(t, hasFeature, "child schema must not leak into its parent")
-	})
+			err = parentPool.QueryRow(t.Context(), "SELECT to_regclass('feature') IS NOT NULL").
+				Scan(&hasFeature)
+			require.NoError(t, err)
+			assert.False(t, hasFeature, "child schema must not leak into its parent")
+		},
+	)
 
 	t.Run("it supports nested templates", func(t *testing.T) {
 		t.Parallel()
@@ -519,7 +531,11 @@ func TestPoolFactory_Derive(t *testing.T) {
 		// Arrange
 		baseConfig := config.Copy()
 		baseConfig.MaxConns = 2
-		base, err := pgxephemeraltest.NewPoolFactory(t.Context(), baseConfig, testutil.NewKVMigrator())
+		base, err := pgxephemeraltest.NewPoolFactory(
+			t.Context(),
+			baseConfig,
+			testutil.NewKVMigrator(),
+		)
 		require.NoError(t, err)
 		cleanupDatabase(t, config, base.Template())
 
@@ -546,7 +562,10 @@ func TestPoolFactory_Derive(t *testing.T) {
 		require.NoError(t, err)
 		cleanupDatabase(t, config, child.Template())
 
-		cachedMigrator := testutil.NewMigrator("SELECT migration_must_not_run;", childMigrator.Hash())
+		cachedMigrator := testutil.NewMigrator(
+			"SELECT migration_must_not_run;",
+			childMigrator.Hash(),
+		)
 
 		// Act
 		cached, err := parent.Derive(t.Context(), cachedMigrator)
@@ -582,10 +601,14 @@ func TestPoolFactory_Derive(t *testing.T) {
 
 		var value string
 
-		err = c1.Pool(t).QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'child'").Scan(&value)
+		err = c1.Pool(t).
+			QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'child'").
+			Scan(&value)
 		require.NoError(t, err)
 		assert.Equal(t, "v1", value)
-		err = c2.Pool(t).QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'child'").Scan(&value)
+		err = c2.Pool(t).
+			QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'child'").
+			Scan(&value)
 		require.NoError(t, err)
 		assert.Equal(t, "v2", value)
 	})
@@ -595,7 +618,8 @@ func TestPoolFactory_Derive(t *testing.T) {
 
 		// Arrange
 		other, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, testutil.NewMigrator(
-			testutil.KVSchema+"INSERT INTO kv VALUES ('parent', 'updated');", deriveTestHash(t),
+			testutil.KVSchema+"INSERT INTO kv VALUES ('parent', 'updated');",
+			t.Name()+"-"+strconv.FormatInt(rand.Int64(), 10), // #nosec G404
 		))
 		require.NoError(t, err)
 		cleanupDatabase(t, config, other.Template())
@@ -625,10 +649,14 @@ func TestPoolFactory_Derive(t *testing.T) {
 
 		var value string
 
-		err = g1.Pool(t).QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'parent'").Scan(&value)
+		err = g1.Pool(t).
+			QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'parent'").
+			Scan(&value)
 		require.NoError(t, err)
 		assert.Equal(t, "base", value)
-		err = g2.Pool(t).QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'parent'").Scan(&value)
+		err = g2.Pool(t).
+			QueryRow(t.Context(), "SELECT value FROM kv WHERE key = 'parent'").
+			Scan(&value)
 		require.NoError(t, err)
 		assert.Equal(t, "updated", value)
 	})
@@ -637,7 +665,10 @@ func TestPoolFactory_Derive(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
-		local := testutil.NewMigrator("", deriveTestHash(t))
+		local := testutil.NewMigrator(
+			"",
+			t.Name()+"-"+strconv.FormatInt(rand.Int64(), 10),
+		) // #nosec G404
 		root, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, local)
 		require.NoError(t, err)
 		cleanupDatabase(t, config, root.Template())
@@ -655,12 +686,6 @@ func TestPoolFactory_Derive(t *testing.T) {
 		require.NoError(t, err)
 		testutil.AssertKVRows(t, rows, []testutil.KV{{Key: "parent", Value: "base"}})
 	})
-}
-
-func TestPoolFactory_DeriveParallel(t *testing.T) {
-	t.Parallel()
-
-	config := testutil.PoolConfig(t)
 
 	t.Run("it migrates different children sharing parents in parallel", func(t *testing.T) {
 		t.Parallel()
@@ -668,7 +693,11 @@ func TestPoolFactory_DeriveParallel(t *testing.T) {
 		// Arrange
 		parents := make([]*pgxephemeraltest.PoolFactory, 2)
 		for i := range parents {
-			parent, err := pgxephemeraltest.NewPoolFactory(t.Context(), config, testutil.NewKVMigrator())
+			parent, err := pgxephemeraltest.NewPoolFactory(
+				t.Context(),
+				config,
+				testutil.NewKVMigrator(),
+			)
 			require.NoError(t, err)
 
 			parents[i] = parent
@@ -765,7 +794,6 @@ func TestPoolFactory_DeriveParallel(t *testing.T) {
 		childMigrator := testutil.NewMigrator("CREATE TABLE feature (id INTEGER);", "shared-child")
 		parents := make([]*pgxephemeraltest.PoolFactory, 8)
 		children := make([]*pgxephemeraltest.PoolFactory, len(parents))
-		start := make(chan struct{})
 
 		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 		defer cancel()
@@ -775,7 +803,6 @@ func TestPoolFactory_DeriveParallel(t *testing.T) {
 		// Act
 		for i := range children {
 			group.Go(func() error {
-				<-start
 				// Independent managers must coordinate through PostgreSQL, not a Go mutex.
 				parent, err := pgxephemeraltest.NewPoolFactory(ctx, config, parentMigrator)
 				if err != nil {
@@ -793,8 +820,6 @@ func TestPoolFactory_DeriveParallel(t *testing.T) {
 				return nil
 			})
 		}
-
-		close(start)
 
 		// Assert
 		require.NoError(t, group.Wait())
@@ -817,7 +842,116 @@ func TestPoolFactory_DeriveParallel(t *testing.T) {
 			assert.Zero(t, count)
 		}
 
-		assert.Len(t, databases, len(children), "each factory must have independent ephemeral database names")
+		assert.Len(
+			t,
+			databases,
+			len(children),
+			"each factory must have independent ephemeral database names",
+		)
+	})
+
+	t.Run("it uses independent factory options", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		parent, err := pgxephemeraltest.NewPoolFactory(
+			t.Context(), config, testutil.NewKVMigrator(),
+			pgxephemeraltest.WithCleanupTimeout(time.Nanosecond),
+			pgxephemeraltest.WithKeepDatabaseOnFailure(false),
+		)
+		require.NoError(t, err)
+		cleanupDatabase(t, config, parent.Template())
+
+		// Keep the shared template alive until all parallel option tests complete.
+		child, err := parent.Derive(t.Context(), testutil.NewNoopMigrator())
+		require.NoError(t, err)
+		cleanupDatabase(t, config, child.Template())
+
+		for _, tt := range []struct {
+			wantCleanupError error
+			name             string
+			opts             []pgxephemeraltest.FactoryOption
+			keep             bool
+		}{
+			{
+				name: "it keeps a failed child's database by default",
+				keep: true,
+			},
+			{
+				name: "it applies child failure options without inheriting the parent's cleanup timeout",
+				opts: []pgxephemeraltest.FactoryOption{pgxephemeraltest.WithKeepDatabaseOnFailure(false)},
+			},
+			{
+				name: "it applies a child-specific cleanup timeout",
+				opts: []pgxephemeraltest.FactoryOption{
+					pgxephemeraltest.WithKeepDatabaseOnFailure(false),
+					pgxephemeraltest.WithCleanupTimeout(time.Nanosecond),
+				},
+				keep:             true,
+				wantCleanupError: context.DeadlineExceeded,
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				// Arrange
+				factory, err := parent.Derive(t.Context(), testutil.NewNoopMigrator(), tt.opts...)
+				require.NoError(t, err)
+
+				var (
+					cleanup    func()
+					cleanupErr error
+					ctrl       = gomock.NewController(t)
+					tb         = internaltesting.NewMockTB(ctrl)
+				)
+
+				tb.EXPECT().Context().Return(t.Context())
+				tb.EXPECT().Name().Return(t.Name())
+				tb.EXPECT().Cleanup(gomock.Any()).Do(func(f func()) { cleanup = f })
+				tb.EXPECT().Helper().AnyTimes()
+				tb.EXPECT().Logf(gomock.Any(), gomock.Any()).AnyTimes()
+				tb.EXPECT().Failed().Times(1).Return(true)
+
+				if tt.wantCleanupError != nil {
+					tb.EXPECT().
+						Errorf(gomock.Any(), gomock.Any(), gomock.Any()).
+						Do(func(_ string, args ...any) {
+							cleanupErr, _ = args[1].(error)
+						})
+				}
+
+				// Act
+				pool := factory.Pool(tb)
+				database := pool.Config().ConnConfig.Database
+
+				require.NotNil(t, cleanup)
+				cleanup()
+
+				// Assert
+				assert.Equal(
+					t,
+					child.Template(),
+					factory.Template(),
+					"options must not change the cached template",
+				)
+
+				if tt.wantCleanupError != nil {
+					require.ErrorIs(t, cleanupErr, tt.wantCleanupError)
+				} else {
+					require.NoError(t, cleanupErr)
+				}
+
+				if tt.keep {
+					cleanupDatabase(t, config, database)
+					conn := testutil.RequireConnect(t.Context(), t, config, database,
+						"failed test's database should remain available")
+					require.NoError(t, conn.Close(t.Context()))
+				} else {
+					testutil.RequireFailToConnect(t.Context(), t, config, database,
+						"failed test's database should be dropped with the child's options")
+				}
+			})
+		}
 	})
 }
 
@@ -902,8 +1036,11 @@ func TestPoolFactory_DeriveRecovery(t *testing.T) {
 		maintenance := testutil.Conn(t)
 
 		// Simulate a process crash leaving a partially migrated, unfinalized child.
-		_, err := maintenance.Exec(t.Context(), "CREATE DATABASE "+pgx.Identifier{childName}.Sanitize()+
-			" TEMPLATE "+pgx.Identifier{parent.Template()}.Sanitize())
+		_, err := maintenance.Exec(
+			t.Context(),
+			"CREATE DATABASE "+pgx.Identifier{childName}.Sanitize()+
+				" TEMPLATE "+pgx.Identifier{parent.Template()}.Sanitize(),
+		)
 		require.NoError(t, err)
 		unfinished := testutil.RequireConnect(t.Context(), t, config, childName)
 		_, err = unfinished.Exec(t.Context(),
@@ -985,214 +1122,4 @@ func TestPoolFactory_DeriveRecovery(t *testing.T) {
 		err = child.Pool(t).Ping(t.Context())
 		require.NoError(t, err)
 	})
-}
-
-func TestPoolFactory_DeriveOptions(t *testing.T) {
-	t.Parallel()
-
-	config := testutil.PoolConfig(t)
-	parent, err := pgxephemeraltest.NewPoolFactory(
-		t.Context(), config, testutil.NewKVMigrator(),
-		pgxephemeraltest.WithCleanupTimeout(time.Nanosecond),
-		pgxephemeraltest.WithKeepDatabaseOnFailure(false),
-	)
-	require.NoError(t, err)
-	cleanupDatabase(t, config, parent.Template())
-
-	// Keep the shared template alive until all parallel option tests complete.
-	child, err := parent.Derive(t.Context(), testutil.NewNoopMigrator())
-	require.NoError(t, err)
-	cleanupDatabase(t, config, child.Template())
-
-	for _, tt := range []struct {
-		wantCleanupError error
-		name             string
-		opts             []pgxephemeraltest.FactoryOption
-		keep             bool
-	}{
-		{
-			name: "it keeps a failed child's database by default",
-			keep: true,
-		},
-		{
-			name: "it applies child failure options without inheriting the parent's cleanup timeout",
-			opts: []pgxephemeraltest.FactoryOption{pgxephemeraltest.WithKeepDatabaseOnFailure(false)},
-		},
-		{
-			name: "it applies a child-specific cleanup timeout",
-			opts: []pgxephemeraltest.FactoryOption{
-				pgxephemeraltest.WithKeepDatabaseOnFailure(false),
-				pgxephemeraltest.WithCleanupTimeout(time.Nanosecond),
-			},
-			keep:             true,
-			wantCleanupError: context.DeadlineExceeded,
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Arrange
-			factory, err := parent.Derive(t.Context(), testutil.NewNoopMigrator(), tt.opts...)
-			require.NoError(t, err)
-
-			var (
-				cleanup    func()
-				cleanupErr error
-				ctrl       = gomock.NewController(t)
-				tb         = internaltesting.NewMockTB(ctrl)
-			)
-
-			tb.EXPECT().Context().Return(t.Context())
-			tb.EXPECT().Name().Return(t.Name())
-			tb.EXPECT().Cleanup(gomock.Any()).Do(func(f func()) { cleanup = f })
-			tb.EXPECT().Helper().AnyTimes()
-			tb.EXPECT().Logf(gomock.Any(), gomock.Any()).AnyTimes()
-			tb.EXPECT().Failed().Times(1).Return(true)
-
-			if tt.wantCleanupError != nil {
-				tb.EXPECT().
-					Errorf(gomock.Any(), gomock.Any(), gomock.Any()).
-					Do(func(_ string, args ...any) {
-						cleanupErr, _ = args[1].(error)
-					})
-			}
-
-			// Act
-			pool := factory.Pool(tb)
-			database := pool.Config().ConnConfig.Database
-
-			require.NotNil(t, cleanup)
-			cleanup()
-
-			// Assert
-			assert.Equal(
-				t,
-				child.Template(),
-				factory.Template(),
-				"options must not change the cached template",
-			)
-
-			if tt.wantCleanupError != nil {
-				require.ErrorIs(t, cleanupErr, tt.wantCleanupError)
-			} else {
-				require.NoError(t, cleanupErr)
-			}
-
-			if tt.keep {
-				cleanupDatabase(t, config, database)
-				conn := testutil.RequireConnect(t.Context(), t, config, database,
-					"failed test's database should remain available")
-				require.NoError(t, conn.Close(t.Context()))
-			} else {
-				testutil.RequireFailToConnect(t.Context(), t, config, database,
-					"failed test's database should be dropped with the child's options")
-			}
-		})
-	}
-}
-
-func TestPoolFactory_DeriveAcrossProcesses(t *testing.T) {
-	t.Parallel()
-
-	// Arrange
-	executable, err := os.Executable()
-	require.NoError(t, err)
-	id := deriveTestHash(t)
-	logPath := filepath.Join(t.TempDir(), "migrations.log")
-	config := testutil.PoolConfig(t)
-	parentName := dbmanager.TemplateName(config.ConnConfig, testutil.NewMigrator("", id+"-parent"))
-	childName := dbmanager.DerivedTemplateName(parentName, testutil.NewMigrator("", id+"-child"))
-	cleanupDatabase(t, config, parentName)
-	cleanupDatabase(t, config, childName)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-
-	group, ctx := errgroup.WithContext(ctx)
-
-	// Act
-	for range 2 {
-		group.Go(func() error {
-			var output bytes.Buffer
-
-			cmd := exec.CommandContext(ctx, executable,
-				"-test.run=^TestPoolFactory_DeriveProcessHelper$", "-test.timeout=20s")
-
-			cmd.Env = append(os.Environ(),
-				"PGXEPHEMERALTEST_DERIVE_PROCESS_ID="+id,
-				"PGXEPHEMERALTEST_DERIVE_PROCESS_LOG="+logPath,
-			)
-			cmd.Stdout = &output
-			cmd.Stderr = &output
-
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("derive subprocess: %s: %w", output.String(), err)
-			}
-
-			return nil
-		})
-	}
-
-	// Assert
-	require.NoError(t, group.Wait())
-
-	log, err := os.ReadFile(logPath)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"parent", "child"}, strings.Fields(string(log)),
-		"both processes must share a single successful parent and child initialization")
-}
-
-func TestPoolFactory_DeriveProcessHelper(t *testing.T) {
-	t.Parallel()
-
-	id := os.Getenv("PGXEPHEMERALTEST_DERIVE_PROCESS_ID")
-	if id == "" {
-		t.Skip("only run by the cross-process derivation test")
-	}
-
-	// Arrange
-	logPath := os.Getenv("PGXEPHEMERALTEST_DERIVE_PROCESS_LOG")
-	migration := func(stage, sql string) *testutil.Migrator {
-		m := testutil.NewMigrator("", id+"-"+stage)
-		m.MigrateFunc = func(ctx context.Context, conn *pgx.Conn) error {
-			// Record outside the templates so repeated initialization cannot erase
-			// the evidence. Each line is appended in one write under the stage lock.
-			//nolint:gosec // The parent test supplies a path in its own temporary directory.
-			file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-			if err != nil {
-				return fmt.Errorf("open migration log: %w", err)
-			}
-
-			_, writeErr := fmt.Fprintln(file, stage)
-			if err := errors.Join(writeErr, file.Close()); err != nil {
-				return fmt.Errorf("write migration log: %w", err)
-			}
-
-			if _, err := conn.Exec(ctx, sql+" SELECT pg_sleep(0.1);"); err != nil {
-				return fmt.Errorf("apply subprocess migration: %w", err)
-			}
-
-			return nil
-		}
-
-		return m
-	}
-	parent, err := pgxephemeraltest.NewPoolFactoryFromConnString(
-		t.Context(), testutil.ConnString(t), migration("parent", testutil.KVSchema),
-	)
-	require.NoError(t, err)
-
-	// Act
-	child, err := parent.Derive(t.Context(), migration("child", "CREATE TABLE feature (id INTEGER);"))
-	require.NoError(t, err)
-	pool := child.Pool(t)
-
-	// Assert
-	var hasSchema bool
-
-	err = pool.QueryRow(t.Context(),
-		"SELECT to_regclass('kv') IS NOT NULL AND to_regclass('feature') IS NOT NULL",
-	).Scan(&hasSchema)
-	require.NoError(t, err)
-	assert.True(t, hasSchema)
 }

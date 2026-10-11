@@ -15,12 +15,12 @@ When using ephemeral databases, the package leverages PostgreSQL [templates](htt
 $ go get go.segfaultmedaddy.com/pgxephemeraltest/v2
 ```
 
-### 1. Define your migrator
+### 1. Define your schema and seed migrators
 
 ```go
-type migrator struct{}
+type schemaMigrator struct{}
 
-func (migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
+func (schemaMigrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
     _, err := conn.Exec(ctx, `
         CREATE TABLE users (
             id SERIAL PRIMARY KEY,
@@ -30,13 +30,27 @@ func (migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
     return err
 }
 
-func (migrator) Hash() string { return "v1" }
+func (schemaMigrator) Hash() string { return "users-schema-v1" }
+
+type seedMigrator struct{}
+
+func (seedMigrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
+    _, err := conn.Exec(ctx, `INSERT INTO users (name) VALUES ($1)`, "Alice")
+    return err
+}
+
+func (seedMigrator) Hash() string { return "users-seed-v1" }
 ```
 
-### 2. Initialize the factory
+The schema migrator creates the `users` table. The seed migrator inserts fixtures into the inherited table without recreating it. Change each migrator's `Hash()` when its schema or seed data changes.
+
+### 2. Initialize the base and derived factories
 
 ```go
-var factory *pgxephemeraltest.PoolFactory
+var (
+    schemaFactory *pgxephemeraltest.PoolFactory
+    seededFactory *pgxephemeraltest.PoolFactory
+)
 
 func TestMain(m *testing.M) {
     ctx := context.Background()
@@ -47,7 +61,12 @@ func TestMain(m *testing.M) {
     }
 
     var err error
-    factory, err = pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, &migrator{})
+    schemaFactory, err = pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, schemaMigrator{})
+    if err != nil {
+        panic(err)
+    }
+
+    seededFactory, err = schemaFactory.Derive(ctx, seedMigrator{})
     if err != nil {
         panic(err)
     }
@@ -56,7 +75,9 @@ func TestMain(m *testing.M) {
 }
 ```
 
-By default, databases from failed tests are kept for debugging. Pass `pgxephemeraltest.WithKeepDatabaseOnFailure(false)` to `NewPoolFactoryFromConnString` to drop them even on failure.
+`schemaFactory` provides an empty `users` table; `seededFactory` provides the same schema with Alice already inserted. Derivation clones the schema template and runs only `seedMigrator`, leaving the base template unchanged. Each pool from the derived factory starts with its own copy of the seed data.
+
+By default, databases from failed tests are kept for debugging. Pass `pgxephemeraltest.WithKeepDatabaseOnFailure(false)` to `NewPoolFactoryFromConnString` or `Derive` to drop them even on failure. Options are not inherited by derived factories.
 
 ### 3. Write isolated tests
 
@@ -65,19 +86,31 @@ func TestUsers(t *testing.T) {
     t.Parallel()
 
     ctx := context.Background()
-    pool := factory.Pool(t) // a pool connected to a newly created fully isolated database
+    pool := schemaFactory.Pool(t) // an isolated database with an empty users table
 
-    _, err := pool.Exec(ctx, `INSERT INTO users (name) VALUES ($1)`, "Alice")
+    _, err := pool.Exec(ctx, `INSERT INTO users (name) VALUES ($1)`, "Bob")
     require.NoError(t, err)
 
     var name string
-    err = pool.QueryRow(ctx, `SELECT name FROM users WHERE name = $1`, "Alice").Scan(&name)
+    err = pool.QueryRow(ctx, `SELECT name FROM users WHERE name = $1`, "Bob").Scan(&name)
+    require.NoError(t, err)
+    require.Equal(t, "Bob", name)
+}
+
+func TestSeededUsers(t *testing.T) {
+    t.Parallel()
+
+    ctx := context.Background()
+    pool := seededFactory.Pool(t) // an isolated database with Alice already seeded
+
+    var name string
+    err := pool.QueryRow(ctx, `SELECT name FROM users WHERE name = $1`, "Alice").Scan(&name)
     require.NoError(t, err)
     require.Equal(t, "Alice", name)
 }
 ```
 
-Every `factory.Pool(t)` call creates a new database and pool, even for the same test. Reuse the returned pool to share state within a test.
+Every `Pool(t)` call on either factory creates a new database and pool, even for the same test. Reuse the returned pool to share state within a test.
 
 For more usage examples, check out the `examples` directory in the root of this repository.
 
@@ -105,24 +138,26 @@ The migrator snapshots file contents when constructed. Its hash includes the ord
 Use `Derive` to clone an initialized factory's template and apply a different migrator on top:
 
 ```go
-parent, err := pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, baseMigrator)
+schemaFactory, err := pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, schemaMigrator{})
 if err != nil {
     panic(err)
 }
 
-child, err := parent.Derive(ctx, featureMigrator,
+seededFactory, err := schemaFactory.Derive(ctx, seedMigrator{},
     pgxephemeraltest.WithKeepDatabaseOnFailure(false),
 )
 if err != nil {
     panic(err)
 }
 
-pool := child.Pool(t) // contains the base schema/data plus the feature migration
+pool := seededFactory.Pool(t) // contains the users schema and Alice's seed data
 ```
 
 Only the child migrator runs during derivation; the parent is not modified or migrated again. The child migrator may be a different implementation, including `pkg/migrator.FSMigrator`. A derived factory can itself be a parent for further derivation.
 
 Child templates are cached by the parent template's identity and the child migrator's `Hash()`. Changing a parent migration therefore changes descendant template identities, even if their local migrations remain the same. `Hash()` should identify only the local migration. Child migrators must account for inherited schema, data, and migration-history tables, and must commit their changes and close any additional database connections before returning.
+
+Root and derived template names use full SHA-256 digests encoded with unpadded URL-safe Base64. Names are 59 bytes including the prefix, within PostgreSQL's 63-byte identifier limit. This naming scheme replaces the previous hashes: existing cached templates are not reused or automatically removed, and migrations run again when the new templates are first initialized. Quote template names when using them in SQL.
 
 `Derive` is safe to call concurrently. Creation of the same child template is serialized using a PostgreSQL advisory lock, including across processes. Different child templates can be cloned and migrated concurrently, even when they share a parent. A migrator instance reused across different templates must support concurrent calls.
 

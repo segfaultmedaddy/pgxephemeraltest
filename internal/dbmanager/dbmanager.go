@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -459,28 +459,24 @@ func acquireLock(
 	}, nil
 }
 
-// TemplateName returns a unique template name for the given migration set.
+// TemplateName identifies the root credentials and migration set.
 func TemplateName(config *pgx.ConnConfig, m Migrator) string {
-	h := fnv.New64()
-	h.Write([]byte(config.User))
-	h.Write([]byte(config.Password))
-	h.Write([]byte(m.Hash()))
-
-	template := TemplatePrefix + strconv.FormatUint(h.Sum64(), 16)
-
-	return template
+	return templateName("pgxephemeraltest/root/v1", config.User, config.Password, m.Hash())
 }
 
 // DerivedTemplateName identifies both the parent template and the local migration.
 // The parent's identity includes its own ancestry and the root credentials.
 func DerivedTemplateName(parent string, m Migrator) string {
+	return templateName("pgxephemeraltest/derived/v1", parent, m.Hash())
+}
+
+func templateName(fields ...string) string {
 	h := sha256.New()
-	for _, field := range []string{"pgxephemeraltest/derived/v1", parent, m.Hash()} {
+	for _, field := range fields {
 		fmt.Fprintf(h, "%d:%s", len(field), field)
 	}
 
-	// A 128-bit digest keeps the full database name below PostgreSQL's 63-byte limit.
-	digest := h.Sum(nil)
-
-	return TemplatePrefix + hex.EncodeToString(digest[:16])
+	// Unpadded URL-safe Base64 encodes all 256 bits in 43 characters, keeping the
+	// prefixed name at 59 bytes, below PostgreSQL's 63-byte identifier limit.
+	return TemplatePrefix + base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 }

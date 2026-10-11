@@ -8,7 +8,10 @@
 
 ### Changed
 
+- **Template names:** Root and derived templates now use full SHA-256 digests encoded with unpadded URL-safe Base64, with length-prefixed inputs and separate root/derived domains. The 59-byte names fit PostgreSQL's identifier limit without truncating the digest. Existing cached templates are not reused or automatically removed; migrations run again under the new names.
 - **Template publication:** Newly initialized templates are disconnected before publication and reject direct connections afterward. Failed initialization attempts clean up unfinished databases while holding their advisory lock.
+- **Usage example:** The README demonstrates separate users schema and seed migrations, with a derived factory providing isolated copies of seeded data.
+- **Derivation tests:** Derivation, factory options, and concurrency coverage are consolidated into parallel subtests. Tests run entirely in-process without launching subprocesses.
 
 ## v2.1.0
 
