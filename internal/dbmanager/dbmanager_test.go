@@ -1,6 +1,8 @@
 package dbmanager_test
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -37,6 +39,93 @@ func TestTemplateName(t *testing.T) {
 	config2.Password = "another"
 
 	assert.NotEqual(t, templateName, dbmanager.TemplateName(config2, m1))
+
+	t.Run("it distinguishes credential and migration hash boundaries", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		identities := []struct {
+			user     string
+			password string
+			hash     string
+		}{
+			{user: "ab", password: "c", hash: "d"},
+			{user: "a", password: "bc", hash: "d"},
+			{user: "a", password: "b", hash: "cd"},
+		}
+
+		// Act
+		names := make(map[string]struct{}, len(identities))
+		for _, identity := range identities {
+			cfg := config.Copy()
+			cfg.User = identity.user
+			cfg.Password = identity.password
+			name := dbmanager.TemplateName(cfg, testutil.NewMigrator("", identity.hash))
+			names[name] = struct{}{}
+		}
+
+		// Assert
+		assert.Len(t, names, len(identities), "credential and migration hash boundaries must be unambiguous")
+	})
+
+	t.Run("it retains the full digest within the identifier limit", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		cfg := config.Copy()
+		cfg.User = strings.Repeat("user", 100)
+		cfg.Password = strings.Repeat("password", 100)
+		migrator := testutil.NewMigrator("", strings.Repeat("hash", 100))
+
+		// Act
+		name := dbmanager.TemplateName(cfg, migrator)
+
+		// Assert
+		assert.True(t, strings.HasPrefix(name, dbmanager.TemplatePrefix))
+		assert.LessOrEqual(t, len(name), 63)
+
+		digest, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(name, dbmanager.TemplatePrefix))
+		require.NoError(t, err)
+		assert.Len(t, digest, sha256.Size)
+	})
+}
+
+func TestDerivedTemplateName(t *testing.T) {
+	t.Parallel()
+
+	t.Run("it distinguishes parent and migration hash boundaries", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		m1 := testutil.NewMigrator("", "bc")
+		m2 := testutil.NewMigrator("", "c")
+
+		// Act
+		n1 := dbmanager.DerivedTemplateName("a", m1)
+		n2 := dbmanager.DerivedTemplateName("ab", m2)
+
+		// Assert
+		assert.NotEqual(t, n1, n2, "parent and migration hash boundaries must be unambiguous")
+	})
+
+	t.Run("it retains the full digest within the identifier limit", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		parent := strings.Repeat("parent", 100)
+		migrator := testutil.NewMigrator("", strings.Repeat("hash", 100))
+
+		// Act
+		name := dbmanager.DerivedTemplateName(parent, migrator)
+
+		// Assert
+		assert.True(t, strings.HasPrefix(name, dbmanager.TemplatePrefix))
+		assert.LessOrEqual(t, len(name), 63)
+
+		digest, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(name, dbmanager.TemplatePrefix))
+		require.NoError(t, err)
+		assert.Len(t, digest, sha256.Size)
+	})
 }
 
 func TestDBManager(t *testing.T) {
@@ -48,6 +137,20 @@ func TestDBManager(t *testing.T) {
 
 	m, err := dbmanager.New(ctx, config)
 	require.NoError(t, err)
+
+	t.Run("it rejects empty template names", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		dbName := "empty_template"
+
+		// Act
+		db, err := m.CreateDB(t.Context(), "", dbName)
+
+		// Assert
+		require.ErrorContains(t, err, "template name must not be empty")
+		assert.Empty(t, db)
+	})
 
 	t.Run("it initializes template once and handles lifecycle", func(t *testing.T) {
 		t.Parallel()

@@ -15,12 +15,12 @@ When using ephemeral databases, the package leverages PostgreSQL [templates](htt
 $ go get go.segfaultmedaddy.com/pgxephemeraltest/v2
 ```
 
-### 1. Define your migrator
+### 1. Define your schema and seed migrators
 
 ```go
-type migrator struct{}
+type schemaMigrator struct{}
 
-func (migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
+func (schemaMigrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
     _, err := conn.Exec(ctx, `
         CREATE TABLE users (
             id SERIAL PRIMARY KEY,
@@ -30,13 +30,27 @@ func (migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
     return err
 }
 
-func (migrator) Hash() string { return "v1" }
+func (schemaMigrator) Hash() string { return "users-schema-v1" }
+
+type seedMigrator struct{}
+
+func (seedMigrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
+    _, err := conn.Exec(ctx, `INSERT INTO users (name) VALUES ($1)`, "Alice")
+    return err
+}
+
+func (seedMigrator) Hash() string { return "users-seed-v1" }
 ```
 
-### 2. Initialize the factory
+The schema migrator creates the `users` table. The seed migrator inserts fixtures into the inherited table without recreating it. Change each migrator's `Hash()` when its schema or seed data changes.
+
+### 2. Initialize the base and derived factories
 
 ```go
-var factory *pgxephemeraltest.PoolFactory
+var (
+    schemaFactory *pgxephemeraltest.PoolFactory
+    seededFactory *pgxephemeraltest.PoolFactory
+)
 
 func TestMain(m *testing.M) {
     ctx := context.Background()
@@ -47,7 +61,12 @@ func TestMain(m *testing.M) {
     }
 
     var err error
-    factory, err = pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, &migrator{})
+    schemaFactory, err = pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, schemaMigrator{})
+    if err != nil {
+        panic(err)
+    }
+
+    seededFactory, err = schemaFactory.Derive(ctx, seedMigrator{})
     if err != nil {
         panic(err)
     }
@@ -56,7 +75,9 @@ func TestMain(m *testing.M) {
 }
 ```
 
-By default, databases from failed tests are kept for debugging. Pass `pgxephemeraltest.WithKeepDatabaseOnFailure(false)` to `NewPoolFactoryFromConnString` to drop them even on failure.
+`schemaFactory` provides an empty `users` table; `seededFactory` provides the same schema with Alice already inserted. Derivation clones the schema template and runs only `seedMigrator`, leaving the base template unchanged. Each pool from the derived factory starts with its own copy of the seed data.
+
+By default, databases from failed tests are kept for debugging. Pass `pgxephemeraltest.WithKeepDatabaseOnFailure(false)` to `NewPoolFactoryFromConnString` or `Derive` to drop them even on failure. Derived factories inherit their parent's cleanup timeout and failure-retention options; options passed to `Derive` override inherited values without changing the parent.
 
 ### 3. Write isolated tests
 
@@ -65,19 +86,31 @@ func TestUsers(t *testing.T) {
     t.Parallel()
 
     ctx := context.Background()
-    pool := factory.Pool(t) // a pool connected to a newly created fully isolated database
+    pool := schemaFactory.Pool(t) // an isolated database with an empty users table
 
-    _, err := pool.Exec(ctx, `INSERT INTO users (name) VALUES ($1)`, "Alice")
+    _, err := pool.Exec(ctx, `INSERT INTO users (name) VALUES ($1)`, "Bob")
     require.NoError(t, err)
 
     var name string
-    err = pool.QueryRow(ctx, `SELECT name FROM users WHERE name = $1`, "Alice").Scan(&name)
+    err = pool.QueryRow(ctx, `SELECT name FROM users WHERE name = $1`, "Bob").Scan(&name)
+    require.NoError(t, err)
+    require.Equal(t, "Bob", name)
+}
+
+func TestSeededUsers(t *testing.T) {
+    t.Parallel()
+
+    ctx := context.Background()
+    pool := seededFactory.Pool(t) // an isolated database with Alice already seeded
+
+    var name string
+    err := pool.QueryRow(ctx, `SELECT name FROM users WHERE name = $1`, "Alice").Scan(&name)
     require.NoError(t, err)
     require.Equal(t, "Alice", name)
 }
 ```
 
-Every `factory.Pool(t)` call creates a new database and pool, even for the same test. Reuse the returned pool to share state within a test.
+Every `Pool(t)` call on either factory creates a new database and pool, even for the same test. Reuse the returned pool to share state within a test.
 
 For more usage examples, check out the `examples` directory in the root of this repository.
 

@@ -3,12 +3,15 @@ package dbmanager
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,6 +20,8 @@ import (
 const (
 	TemplatePrefix = "pgepht_template_"
 	DatabasePrefix = "pgepht_"
+
+	maintenanceCleanupTimeout = 15 * time.Second
 )
 
 // Migrator applies the migration to the database.
@@ -29,12 +34,17 @@ type Migrator interface {
 	//
 	// Migrate is typically run once during the db manager instantiation
 	// for template database initialization.
+	// For a derived template, the database already contains the parent's schema
+	// and data. Migrate must commit its changes and leave no additional connections
+	// to the database open when it returns.
 	Migrate(context.Context, *pgx.Conn) error
 
 	// Hash returns a unique identifier for a given migration set.
 	//
 	// Each unique identifier is used to uniquely identify database template in
 	// the target database.
+	// For a derived template, Hash identifies only the local migration; the parent
+	// identity is included separately in the template name.
 	Hash() string
 }
 
@@ -74,12 +84,23 @@ func New(
 }
 
 // Init creates a new template database owned by the supplied user.
-func (f *DBManager) Init(ctx context.Context, migrator Migrator, tpl string) (err error) {
+func (f *DBManager) Init(ctx context.Context, migrator Migrator, tpl string) error {
+	return f.InitFrom(ctx, migrator, tpl, "")
+}
+
+// InitFrom initializes tpl by cloning source and applying migrator. If source is
+// empty, PostgreSQL's default template is used. Initialization is serialized by
+// an advisory lock on tpl, held until the migration connection is closed and tpl
+// is finalized. No advisory lock is taken on source.
+//
+// Managers sharing templates must connect to the same maintenance database,
+// because PostgreSQL advisory locks are database-scoped.
+func (f *DBManager) InitFrom(ctx context.Context, migrator Migrator, tpl, source string) (err error) {
 	mc, err := f.newMaintenanceConn(ctx)
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to connect to database: %w", err)
 	}
-	defer mc.Close(ctx)
+	defer func() { err = errors.Join(err, closeConn(ctx, mc)) }()
 
 	// Linearize the creation of database template across multiple processes, since
 	// it is a shared resource and can cause conflicts, when trying to initialize
@@ -90,20 +111,13 @@ func (f *DBManager) Init(ctx context.Context, migrator Migrator, tpl string) (er
 	}
 
 	defer func() {
-		releaseErr := releaseLock(context.WithoutCancel(ctx))
-		if releaseErr == nil {
-			return
-		}
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), maintenanceCleanupTimeout)
+		defer cancel()
 
-		if err == nil {
-			err = releaseErr
-			return
-		}
-
-		err = errors.Join(err, releaseErr)
+		err = errors.Join(err, releaseLock(cleanupCtx))
 	}()
 
-	if err := f.mkTemplate(ctx, migrator, f.config.ConnConfig.User, tpl); err != nil {
+	if err := f.mkTemplate(ctx, mc, migrator, tpl, source); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to create database template: %w", err)
 	}
 
@@ -112,6 +126,10 @@ func (f *DBManager) Init(ctx context.Context, migrator Migrator, tpl string) (er
 
 // CreateDB creates a new db ephemeral database and returns the database name.
 func (f *DBManager) CreateDB(ctx context.Context, tpl string, db string) (string, error) {
+	if tpl == "" {
+		return "", errors.New("pgxephemeraltest: template name must not be empty")
+	}
+
 	mc, err := f.newMaintenanceConn(ctx)
 	if err != nil {
 		return "", fmt.Errorf("pgxephemeraltest: failed to acquire maintenance connection: %w", err)
@@ -120,15 +138,14 @@ func (f *DBManager) CreateDB(ctx context.Context, tpl string, db string) (string
 
 	db = DatabasePrefix + db
 
-	_, err = mc.Exec(ctx, strings.Join([]string{
+	if _, err := mc.Exec(ctx, strings.Join([]string{
 		"CREATE DATABASE",
 		pgx.Identifier{db}.Sanitize(),
 		"TEMPLATE",
 		pgx.Identifier{tpl}.Sanitize(),
 		"OWNER",
 		pgx.Identifier{f.config.ConnConfig.User}.Sanitize(),
-	}, " "))
-	if err != nil {
+	}, " ")); err != nil {
 		return "", fmt.Errorf("pgxephemeraltest: failed to copy database template: %w", err)
 	}
 
@@ -307,25 +324,14 @@ func (f *DBManager) newMaintenanceConn(ctx context.Context) (*pgx.Conn, error) {
 	return conn, nil
 }
 
-// mkTemplate creates a new database template with migrations applied.
-// If the template exists, it will skip migration.
-//
-// Generally, mkTemplate is expected to be called only once at the factory
-// initialization.
-//
-// mkTemplate is not thread-safe; attempting to run it concurrently will result in
-// connection lock (pgx busy conn).
+// mkTemplate creates a database template with migrations applied, or reuses an
+// existing finalized template. The caller must hold its initialization lock on mc.
 func (f *DBManager) mkTemplate(
 	ctx context.Context,
+	mc *pgx.Conn,
 	migrator Migrator,
-	user, template string,
-) error {
-	mc, err := f.newMaintenanceConn(ctx)
-	if err != nil {
-		return fmt.Errorf("pgxephemeraltest: failed to get maintenance connection: %w", err)
-	}
-	defer mc.Close(ctx)
-
+	template, source string,
+) (err error) {
 	// It is safe to check only if the database is marked as a template, since marking
 	// it as a template is the last step in the process.
 	var doesTemplateExists bool
@@ -348,12 +354,34 @@ func (f *DBManager) mkTemplate(
 		return fmt.Errorf("pgxephemeraltest: failed to drop existing database template: %w", err)
 	}
 
-	if _, err := mc.Exec(ctx, strings.Join([]string{
-		"CREATE DATABASE",
-		pgx.Identifier{template}.Sanitize(),
-		"OWNER",
-		pgx.Identifier{user}.Sanitize(),
-	}, " ")); err != nil {
+	// Clean up a failed initialization while still holding the destination lock.
+	// A process crash can still leave an unfinished database, recovered above.
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), maintenanceCleanupTimeout)
+		defer cancel()
+
+		if _, dropErr := mc.Exec(
+			cleanupCtx,
+			"DROP DATABASE IF EXISTS "+pgx.Identifier{template}.Sanitize()+" WITH (FORCE)",
+		); dropErr != nil {
+			err = errors.Join(
+				err,
+				fmt.Errorf("pgxephemeraltest: failed to clean up unfinished template: %w", dropErr),
+			)
+		}
+	}()
+
+	parts := []string{"CREATE DATABASE", pgx.Identifier{template}.Sanitize()}
+	if source != "" {
+		parts = append(parts, "TEMPLATE", pgx.Identifier{source}.Sanitize())
+	}
+
+	parts = append(parts, "OWNER", pgx.Identifier{f.config.ConnConfig.User}.Sanitize())
+	if _, err := mc.Exec(ctx, strings.Join(parts, " ")); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to create database template: %w", err)
 	}
 
@@ -362,10 +390,16 @@ func (f *DBManager) mkTemplate(
 	if err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to connect to template database: %w", err)
 	}
-	defer tc.Close(ctx)
+	defer func() { err = errors.Join(err, closeConn(ctx, tc)) }()
 
 	if err := migrator.Migrate(ctx, tc); err != nil {
 		return fmt.Errorf("pgxephemeraltest: failed to run migrations: %w", err)
+	}
+
+	// A template must have no connections before it can be cloned. Close before
+	// publishing it as ready, and prevent direct connections to the cached template.
+	if err := closeConn(ctx, tc); err != nil {
+		return fmt.Errorf("pgxephemeraltest: failed to close template migration connection: %w", err)
 	}
 
 	if _, err := mc.Exec(ctx, alterDatabaseIsTemplate(template, true)); err != nil {
@@ -375,13 +409,29 @@ func (f *DBManager) mkTemplate(
 	return nil
 }
 
+func closeConn(ctx context.Context, conn *pgx.Conn) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), maintenanceCleanupTimeout)
+	defer cancel()
+
+	if err := conn.Close(cleanupCtx); err != nil {
+		return fmt.Errorf("pgxephemeraltest: failed to close database connection: %w", err)
+	}
+
+	return nil
+}
+
 func alterDatabaseIsTemplate(db string, isTemplate bool) string {
-	return strings.Join([]string{
+	parts := []string{
 		"ALTER DATABASE",
 		pgx.Identifier{db}.Sanitize(),
 		"WITH IS_TEMPLATE",
 		strconv.FormatBool(isTemplate),
-	}, " ")
+	}
+	if isTemplate {
+		parts = append(parts, "ALLOW_CONNECTIONS false")
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // acquireLock acquires a postgres advisory lock.
@@ -409,14 +459,24 @@ func acquireLock(
 	}, nil
 }
 
-// TemplateName returns a unique template name for the given migration set.
+// TemplateName identifies the root credentials and migration set.
 func TemplateName(config *pgx.ConnConfig, m Migrator) string {
-	h := fnv.New64()
-	h.Write([]byte(config.User))
-	h.Write([]byte(config.Password))
-	h.Write([]byte(m.Hash()))
+	return templateName("pgxephemeraltest/root/v1", config.User, config.Password, m.Hash())
+}
 
-	template := TemplatePrefix + strconv.FormatUint(h.Sum64(), 16)
+// DerivedTemplateName identifies both the parent template and the local migration.
+// The parent's identity includes its own ancestry and the root credentials.
+func DerivedTemplateName(parent string, m Migrator) string {
+	return templateName("pgxephemeraltest/derived/v1", parent, m.Hash())
+}
 
-	return template
+func templateName(fields ...string) string {
+	h := sha256.New()
+	for _, field := range fields {
+		fmt.Fprintf(h, "%d:%s", len(field), field)
+	}
+
+	// Unpadded URL-safe Base64 encodes all 256 bits in 43 characters, keeping the
+	// prefixed name at 59 bytes, below PostgreSQL's 63-byte identifier limit.
+	return TemplatePrefix + base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 }
