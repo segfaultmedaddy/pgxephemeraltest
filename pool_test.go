@@ -850,7 +850,7 @@ func TestPoolFactory_Derive(t *testing.T) {
 		)
 	})
 
-	t.Run("it uses independent factory options", func(t *testing.T) {
+	t.Run("it inherits factory options and applies child overrides", func(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
@@ -867,27 +867,70 @@ func TestPoolFactory_Derive(t *testing.T) {
 		require.NoError(t, err)
 		cleanupDatabase(t, config, child.Template())
 
+		grandchild, err := child.Derive(t.Context(), testutil.NewNoopMigrator())
+		require.NoError(t, err)
+		cleanupDatabase(t, config, grandchild.Template())
+
 		for _, tt := range []struct {
 			wantCleanupError error
 			name             string
 			opts             []pgxephemeraltest.FactoryOption
 			keep             bool
+			nested           bool
+			sibling          bool
 		}{
 			{
-				name: "it keeps a failed child's database by default",
+				name:             "it inherits the parent's cleanup timeout and failure retention",
+				keep:             true,
+				wantCleanupError: context.DeadlineExceeded,
+			},
+			{
+				name: "it overrides cleanup timeout while inheriting failure retention",
+				opts: []pgxephemeraltest.FactoryOption{
+					pgxephemeraltest.WithCleanupTimeout(pgxephemeraltest.DefaultCleanupTimeout),
+				},
+			},
+			{
+				name: "it overrides failure retention without changing the parent's cleanup timeout",
+				opts: []pgxephemeraltest.FactoryOption{pgxephemeraltest.WithKeepDatabaseOnFailure(true)},
 				keep: true,
 			},
 			{
-				name: "it applies child failure options without inheriting the parent's cleanup timeout",
-				opts: []pgxephemeraltest.FactoryOption{pgxephemeraltest.WithKeepDatabaseOnFailure(false)},
+				name: "it restores the default cleanup timeout with a zero override",
+				opts: []pgxephemeraltest.FactoryOption{pgxephemeraltest.WithCleanupTimeout(0)},
 			},
 			{
-				name: "it applies a child-specific cleanup timeout",
+				name: "it applies child overrides in order",
 				opts: []pgxephemeraltest.FactoryOption{
-					pgxephemeraltest.WithKeepDatabaseOnFailure(false),
+					pgxephemeraltest.WithKeepDatabaseOnFailure(true),
 					pgxephemeraltest.WithCleanupTimeout(time.Nanosecond),
+					pgxephemeraltest.WithKeepDatabaseOnFailure(false),
+					pgxephemeraltest.WithCleanupTimeout(pgxephemeraltest.DefaultCleanupTimeout),
+				},
+			},
+			{
+				name:             "it inherits options through nested derivation",
+				keep:             true,
+				nested:           true,
+				wantCleanupError: context.DeadlineExceeded,
+			},
+			{
+				name: "it passes overridden child options to grandchildren",
+				opts: []pgxephemeraltest.FactoryOption{
+					pgxephemeraltest.WithKeepDatabaseOnFailure(true),
+					pgxephemeraltest.WithCleanupTimeout(pgxephemeraltest.DefaultCleanupTimeout),
+				},
+				keep:   true,
+				nested: true,
+			},
+			{
+				name: "it leaves parent and sibling options unchanged after child overrides",
+				opts: []pgxephemeraltest.FactoryOption{
+					pgxephemeraltest.WithKeepDatabaseOnFailure(true),
+					pgxephemeraltest.WithCleanupTimeout(pgxephemeraltest.DefaultCleanupTimeout),
 				},
 				keep:             true,
+				sibling:          true,
 				wantCleanupError: context.DeadlineExceeded,
 			},
 		} {
@@ -897,6 +940,20 @@ func TestPoolFactory_Derive(t *testing.T) {
 				// Arrange
 				factory, err := parent.Derive(t.Context(), testutil.NewNoopMigrator(), tt.opts...)
 				require.NoError(t, err)
+
+				template := child.Template()
+
+				if tt.nested {
+					factory, err = factory.Derive(t.Context(), testutil.NewNoopMigrator())
+					require.NoError(t, err)
+
+					template = grandchild.Template()
+				}
+
+				if tt.sibling {
+					factory, err = parent.Derive(t.Context(), testutil.NewNoopMigrator())
+					require.NoError(t, err)
+				}
 
 				var (
 					cleanup    func()
@@ -930,7 +987,7 @@ func TestPoolFactory_Derive(t *testing.T) {
 				// Assert
 				assert.Equal(
 					t,
-					child.Template(),
+					template,
 					factory.Template(),
 					"options must not change the cached template",
 				)

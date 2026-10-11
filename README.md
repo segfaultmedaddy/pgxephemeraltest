@@ -77,7 +77,7 @@ func TestMain(m *testing.M) {
 
 `schemaFactory` provides an empty `users` table; `seededFactory` provides the same schema with Alice already inserted. Derivation clones the schema template and runs only `seedMigrator`, leaving the base template unchanged. Each pool from the derived factory starts with its own copy of the seed data.
 
-By default, databases from failed tests are kept for debugging. Pass `pgxephemeraltest.WithKeepDatabaseOnFailure(false)` to `NewPoolFactoryFromConnString` or `Derive` to drop them even on failure. Options are not inherited by derived factories.
+By default, databases from failed tests are kept for debugging. Pass `pgxephemeraltest.WithKeepDatabaseOnFailure(false)` to `NewPoolFactoryFromConnString` or `Derive` to drop them even on failure. Derived factories inherit their parent's cleanup timeout and failure-retention options; options passed to `Derive` override inherited values without changing the parent.
 
 ### 3. Write isolated tests
 
@@ -132,38 +132,6 @@ factory, err := pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, m
 `FromFS` recursively loads regular `.sql` files and executes them in lexicographic order of their full paths. Statements within each file are executed in order, and migration stops at the first error. Use `fs.Sub` to select a subdirectory of an embedded filesystem, or `migrator.FromFile(fsys, "schema.sql")` to load a single file.
 
 The migrator snapshots file contents when constructed. Its hash includes the ordered filenames and contents, so changing the migration set produces a different database template.
-
-## Derived templates
-
-Use `Derive` to clone an initialized factory's template and apply a different migrator on top:
-
-```go
-schemaFactory, err := pgxephemeraltest.NewPoolFactoryFromConnString(ctx, connString, schemaMigrator{})
-if err != nil {
-    panic(err)
-}
-
-seededFactory, err := schemaFactory.Derive(ctx, seedMigrator{},
-    pgxephemeraltest.WithKeepDatabaseOnFailure(false),
-)
-if err != nil {
-    panic(err)
-}
-
-pool := seededFactory.Pool(t) // contains the users schema and Alice's seed data
-```
-
-Only the child migrator runs during derivation; the parent is not modified or migrated again. The child migrator may be a different implementation, including `pkg/migrator.FSMigrator`. A derived factory can itself be a parent for further derivation.
-
-Child templates are cached by the parent template's identity and the child migrator's `Hash()`. Changing a parent migration therefore changes descendant template identities, even if their local migrations remain the same. `Hash()` should identify only the local migration. Child migrators must account for inherited schema, data, and migration-history tables, and must commit their changes and close any additional database connections before returning.
-
-Root and derived template names use full SHA-256 digests encoded with unpadded URL-safe Base64. Names are 59 bytes including the prefix, within PostgreSQL's 63-byte identifier limit. This naming scheme replaces the previous hashes: existing cached templates are not reused or automatically removed, and migrations run again when the new templates are first initialized. Quote template names when using them in SQL.
-
-`Derive` is safe to call concurrently. Creation of the same child template is serialized using a PostgreSQL advisory lock, including across processes. Different child templates can be cloned and migrated concurrently, even when they share a parent. A migrator instance reused across different templates must support concurrent calls.
-
-The child inherits a copy of its parent's connection configuration, including its maintenance database. Cleanup and failure-retention options are **not** inherited: constructor defaults apply unless overridden in `Derive`. All processes sharing templates must use the same maintenance database, because PostgreSQL advisory locks are database-scoped.
-
-Newly initialized templates reject direct connections once migration is complete; use `Pool(t)` or clone a template for inspection. Older cached templates must also remain idle while cloning. Templates persist as reusable caches, and test cleanup drops only ephemeral databases. Do not administratively drop templates during active initialization; existing children are independent copies and remain usable after a parent is dropped.
 
 ## How It Works
 
