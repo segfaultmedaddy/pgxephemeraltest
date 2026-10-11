@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v2.2.0
+
 ### Added
 
 - **Derived templates:** `PoolFactory.Derive` clones a parent template and applies a separate migrator. Parent-aware cache keys support nested derivation, and destination advisory locks coordinate concurrent initialization across processes without serializing siblings sharing a parent.
