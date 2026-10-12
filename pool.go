@@ -18,7 +18,7 @@ import (
 type factoryOptions struct {
 	cleanupTimeout              time.Duration
 	shouldKeepDatabaseOnFailure bool
-	lazyInitialization          bool
+	isLazyInit                  bool
 }
 
 func (p *factoryOptions) defaults() {
@@ -60,10 +60,9 @@ type PoolFactory struct {
 
 // NewPoolFactory creates a new PoolFactory instance.
 //
-// It initializes a new database, applies migration to it and marks it as
+// By default, it initializes a database, applies the migration, and marks it as
 // a template. The template is copied for each newly created ephemeral database.
-// WithLazyInitialization(true) defers database initialization until the first
-// Pool call. The supplied context is only used for eager initialization.
+// See WithLazyInitialization to defer template initialization.
 func NewPoolFactory(
 	ctx context.Context,
 	config *pgxpool.Config,
@@ -87,7 +86,7 @@ func newPoolFactory(
 		options = factoryOptions{
 			cleanupTimeout:              DefaultCleanupTimeout,
 			shouldKeepDatabaseOnFailure: true,
-			lazyInitialization:          false,
+			isLazyInit:                  false,
 		}
 	}
 
@@ -126,7 +125,7 @@ func newPoolFactory(
 		isInitialized: false,
 	}
 
-	if !options.lazyInitialization {
+	if !options.isLazyInit {
 		if err := f.init(ctx); err != nil {
 			return nil, err
 		}
@@ -156,7 +155,7 @@ func NewPoolFactoryFromConnString(
 // A derived factory can itself be used as a parent for further derivation.
 //
 // The template is cached by the parent template name and the migrator's Hash.
-// Concurrent calls for the same template are serialized by a PostgreSQL advisory
+// Initialization of the same template is serialized by a PostgreSQL advisory
 // lock; different child templates can be initialized in parallel, even when they
 // share a parent. A migrator shared across different templates must support
 // concurrent calls.
@@ -164,9 +163,6 @@ func NewPoolFactoryFromConnString(
 // The child inherits a copy of f's connection configuration, including its
 // maintenance database, and its factory options. Options supplied in opts override
 // the inherited values for the child without changing the parent or its siblings.
-// Lazy initialization is inherited too: a lazy child does not initialize either
-// template until Pool is called. An eager child initializes its parent
-// first, even if the parent is lazy.
 func (f *PoolFactory) Derive(
 	ctx context.Context,
 	migrator Migrator,
@@ -187,15 +183,19 @@ func (f *PoolFactory) Derive(
 // Template returns the template name used to create ephemeral databases.
 //
 // It is computed once on PoolFactory creation and stays the same
-// for the lifetime of the factory. It does not initialize a lazy factory.
+// for the lifetime of the factory.
 func (f *PoolFactory) Template() string { return f.template }
 
-// Pool returns a pool connected to a newly created isolated database
-// ready for use.
+// Pool returns a ready-to-use pool connected to a newly created isolated
+// database, using the test's context.
+//
+// With lazy initialization enabled, the first Pool call initializes the template
+// before creating the ephemeral database.
+//
+// Pool is safe for concurrent calls, including template initialization.
 //
 // It is expected that each test case uses a separate database, which
 // helps to isolate tests and prevent data leakage between them.
-// Lazy templates and their ancestors are initialized using the test's context.
 //
 // Lifetime of the pool is managed by the tb, the pool is closed when
 // the test is done. By default, a failed test's database is left intact for debugging;

@@ -47,11 +47,11 @@ func WithKeepDatabaseOnFailure(keep bool) FactoryOption {
 }
 
 // WithLazyInitialization controls whether PoolFactory template initialization is
-// deferred until the first Pool call. The default is false (eager).
-// Derived factories inherit this setting unless overridden. It has no effect
-// on TxFactory.
+// deferred until the first Pool call, using the test's context. The default is
+// false (eager). Derived factories inherit this setting unless overridden.
+// It has no effect on TxFactory.
 func WithLazyInitialization(lazy bool) FactoryOption {
-	return func(config *factoryOptions) { config.lazyInitialization = lazy }
+	return func(config *factoryOptions) { config.isLazyInit = lazy }
 }
 
 // assertNoError is a helper function that asserts that an error is nil.
