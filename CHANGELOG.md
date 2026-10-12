@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v2.3.0
+
 ### Added
 
 - **Lazy pool factories:** `WithLazyInitialization(true)` defers template initialization until the first `Pool` call. Derived factories inherit the setting and initialize their ancestors on demand. Initialization is concurrency-safe and can be retried after failures or cancellation; eager initialization remains the default.
