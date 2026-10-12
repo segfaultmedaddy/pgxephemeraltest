@@ -18,6 +18,7 @@ import (
 type factoryOptions struct {
 	cleanupTimeout              time.Duration
 	shouldKeepDatabaseOnFailure bool
+	isLazyInit                  bool
 }
 
 func (p *factoryOptions) defaults() {
@@ -46,37 +47,49 @@ type Migrator = dbmanager.Migrator
 // Each created database is prepared with applied migration provided by running
 // provided migrator.
 type PoolFactory struct {
-	m        *dbmanager.DBManager
-	config   *pgxpool.Config
-	names    *namegenerator.Generator
-	template string
-	options  factoryOptions
+	m             *dbmanager.DBManager
+	config        *pgxpool.Config
+	names         *namegenerator.Generator
+	migrator      Migrator
+	parent        *PoolFactory
+	initLockCh    chan struct{}
+	template      string
+	options       factoryOptions
+	isInitialized bool
 }
 
 // NewPoolFactory creates a new PoolFactory instance.
 //
-// It initializes a new database, applies migration to it and marks it as
+// By default, it initializes a database, applies the migration, and marks it as
 // a template. The template is copied for each newly created ephemeral database.
+// See WithLazyInitialization to defer template initialization.
 func NewPoolFactory(
 	ctx context.Context,
 	config *pgxpool.Config,
 	migrator Migrator,
 	opts ...FactoryOption,
 ) (*PoolFactory, error) {
-	return newPoolFactory(ctx, config, migrator, "", factoryOptions{
-		cleanupTimeout:              DefaultCleanupTimeout,
-		shouldKeepDatabaseOnFailure: true,
-	}, opts...)
+	return newPoolFactory(ctx, config, migrator, nil, opts...)
 }
 
 func newPoolFactory(
 	ctx context.Context,
 	config *pgxpool.Config,
 	migrator Migrator,
-	parent string,
-	options factoryOptions,
+	parent *PoolFactory,
 	opts ...FactoryOption,
 ) (*PoolFactory, error) {
+	var options factoryOptions
+	if parent != nil {
+		options = parent.options
+	} else {
+		options = factoryOptions{
+			cleanupTimeout:              DefaultCleanupTimeout,
+			shouldKeepDatabaseOnFailure: true,
+			isLazyInit:                  false,
+		}
+	}
+
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -94,22 +107,28 @@ func newPoolFactory(
 	}
 
 	var template string
-	if parent == "" {
+	if parent == nil {
 		template = dbmanager.TemplateName(config.ConnConfig, migrator)
 	} else {
-		template = dbmanager.DerivedTemplateName(parent, migrator)
-	}
-
-	if err := m.InitFrom(ctx, migrator, template, parent); err != nil {
-		return nil, fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
+		template = dbmanager.DerivedTemplateName(parent.template, migrator)
 	}
 
 	f := PoolFactory{
-		config:   config.Copy(),
-		m:        m,
-		template: template,
-		names:    names,
-		options:  options,
+		config:        config.Copy(),
+		m:             m,
+		template:      template,
+		names:         names,
+		migrator:      migrator,
+		parent:        parent,
+		initLockCh:    make(chan struct{}, 1),
+		options:       options,
+		isInitialized: false,
+	}
+
+	if !options.isLazyInit {
+		if err := f.init(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	return &f, nil
@@ -136,7 +155,7 @@ func NewPoolFactoryFromConnString(
 // A derived factory can itself be used as a parent for further derivation.
 //
 // The template is cached by the parent template name and the migrator's Hash.
-// Concurrent calls for the same template are serialized by a PostgreSQL advisory
+// Initialization of the same template is serialized by a PostgreSQL advisory
 // lock; different child templates can be initialized in parallel, even when they
 // share a parent. A migrator shared across different templates must support
 // concurrent calls.
@@ -149,7 +168,7 @@ func (f *PoolFactory) Derive(
 	migrator Migrator,
 	opts ...FactoryOption,
 ) (*PoolFactory, error) {
-	child, err := newPoolFactory(ctx, f.config, migrator, f.template, f.options, opts...)
+	child, err := newPoolFactory(ctx, f.config, migrator, f, opts...)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"pgxephemeraltest: failed to derive factory from template %q: %w",
@@ -167,8 +186,13 @@ func (f *PoolFactory) Derive(
 // for the lifetime of the factory.
 func (f *PoolFactory) Template() string { return f.template }
 
-// Pool returns a pool connected to a newly created isolated database
-// ready for use.
+// Pool returns a ready-to-use pool connected to a newly created isolated
+// database, using the test's context.
+//
+// With lazy initialization enabled, the first Pool call initializes the template
+// before creating the ephemeral database.
+//
+// Pool is safe for concurrent calls, including template initialization.
 //
 // It is expected that each test case uses a separate database, which
 // helps to isolate tests and prevent data leakage between them.
@@ -227,7 +251,56 @@ func (f *PoolFactory) Pool(tb internaltesting.TB) *pgxpool.Pool {
 	return pool
 }
 
+// init initializes the factory's template, initializing any parent templates
+// first. Pool calls it automatically using the test's context.
+//
+// Concurrent calls are safe and wait for initialization using their own contexts.
+// Successful initialization is remembered; failed or canceled attempts can be
+// retried. The constructor's context is not retained.
+func (f *PoolFactory) init(ctx context.Context) error {
+	select {
+	case f.initLockCh <- struct{}{}:
+		defer func() { <-f.initLockCh }()
+	case <-ctx.Done():
+		return fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", ctx.Err())
+	}
+
+	if f.isInitialized {
+		return nil
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
+	}
+
+	var source string
+
+	if f.parent != nil {
+		if err := f.parent.init(ctx); err != nil {
+			return fmt.Errorf(
+				"pgxephemeraltest: failed to initialize parent template %q: %w",
+				f.parent.template,
+				err,
+			)
+		}
+
+		source = f.parent.template
+	}
+
+	if err := f.m.InitFrom(ctx, f.migrator, f.template, source); err != nil {
+		return fmt.Errorf("pgxephemeraltest: failed to initialize factory: %w", err)
+	}
+
+	f.isInitialized = true
+
+	return nil
+}
+
 func (f *PoolFactory) createDB(ctx context.Context, testName string) (string, error) {
+	if err := f.init(ctx); err != nil {
+		return "", err
+	}
+
 	db, err := f.m.CreateDB(ctx, f.template, f.names.Generate(testName))
 	if err != nil {
 		return "", fmt.Errorf("create ephemeral database from template %q: %w", f.template, err)

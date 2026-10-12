@@ -21,8 +21,7 @@ const KVSchema = `CREATE TABLE IF NOT EXISTS kv (
 );`
 
 type Migrator struct {
-	// MigrateFunc overrides schema execution when set. Calls counts every invocation, including failures.
-	MigrateFunc func(context.Context, *pgx.Conn) error
+	migrateFunc func(context.Context, *pgx.Conn) error
 	Schema      string
 	HashID      string
 	calls       atomic.Int32
@@ -30,13 +29,13 @@ type Migrator struct {
 
 func NewNoopMigrator() *Migrator {
 	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
-	return &Migrator{MigrateFunc: nil, Schema: "", HashID: "noop"}
+	return &Migrator{migrateFunc: nil, Schema: "", HashID: "noop"}
 }
 
 func NewKVMigrator() *Migrator {
 	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
 	return &Migrator{
-		MigrateFunc: nil,
+		migrateFunc: nil,
 		Schema:      KVSchema,
 		HashID:      "kv" + strconv.FormatInt(rand.Int64(), 10), // #nosec G404
 	}
@@ -44,7 +43,14 @@ func NewKVMigrator() *Migrator {
 
 func NewMigrator(schema, hash string) *Migrator {
 	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
-	return &Migrator{MigrateFunc: nil, Schema: schema, HashID: hash}
+	return &Migrator{migrateFunc: nil, Schema: schema, HashID: hash}
+}
+
+// NewDynamicMigrator creates a migrator that runs migrate instead of SQL schema.
+// Calls counts every invocation, including failures.
+func NewDynamicMigrator(migrate func(context.Context, *pgx.Conn) error, hash string) *Migrator {
+	//nolint:exhaustruct_v5 // calls counter intentionally starts from zero value.
+	return &Migrator{migrateFunc: migrate, Schema: "", HashID: hash}
 }
 
 func (m *Migrator) Hash() string { return m.HashID }
@@ -52,8 +58,8 @@ func (m *Migrator) Hash() string { return m.HashID }
 func (m *Migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
 	m.calls.Add(1)
 
-	if m.MigrateFunc != nil {
-		return m.MigrateFunc(ctx, conn)
+	if m.migrateFunc != nil {
+		return m.migrateFunc(ctx, conn)
 	}
 
 	if m.Schema == "" {
@@ -69,6 +75,28 @@ func (m *Migrator) Migrate(ctx context.Context, conn *pgx.Conn) error {
 }
 
 func (m *Migrator) Calls() int32 { return m.calls.Load() }
+
+// NewMigrationBarrier creates a one-shot barrier that waits for every migration
+// to enter, proving they overlap.
+func NewMigrationBarrier(participants int) func(context.Context) error {
+	var remaining atomic.Int64
+	remaining.Store(int64(participants))
+
+	ready := make(chan struct{})
+
+	return func(ctx context.Context) error {
+		if remaining.Add(-1) == 0 {
+			close(ready)
+		}
+
+		select {
+		case <-ready:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
 
 func ConnString(tb testing.TB) string {
 	tb.Helper()

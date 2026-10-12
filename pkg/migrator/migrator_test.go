@@ -47,9 +47,9 @@ func Test_FSMigrator_Hash(t *testing.T) {
 	baseHash := base.Hash()
 
 	tests := []struct {
-		fsys fstest.MapFS
-		name string
-		same bool
+		fsys               fstest.MapFS
+		name               string
+		shouldHaveSameHash bool
 	}{
 		{
 			name: "should ignore map insertion order",
@@ -57,7 +57,7 @@ func Test_FSMigrator_Hash(t *testing.T) {
 				"002.sql": {Data: []byte("c")},
 				"001.sql": {Data: []byte("ab")},
 			},
-			same: true,
+			shouldHaveSameHash: true,
 		},
 		{
 			name: "should ignore non-SQL files",
@@ -66,7 +66,7 @@ func Test_FSMigrator_Hash(t *testing.T) {
 				"002.sql":   {Data: []byte("c")},
 				"README.md": {Data: []byte("migration documentation")},
 			},
-			same: true,
+			shouldHaveSameHash: true,
 		},
 		{
 			name: "should distinguish identical contents split across different file boundaries",
@@ -117,7 +117,7 @@ func Test_FSMigrator_Hash(t *testing.T) {
 			hash := m.Hash()
 
 			// Assert
-			if tt.same {
+			if tt.shouldHaveSameHash {
 				assert.Equal(t, baseHash, hash)
 			} else {
 				assert.NotEqual(t, baseHash, hash)
@@ -197,21 +197,6 @@ func Test_FSMigrator_FromFS(t *testing.T) {
 			assert.ErrorContains(t, err, tt.path)
 		})
 	}
-
-	t.Run("should accept an empty filesystem", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		fsys := fstest.MapFS{}
-
-		// Act
-		m, err := migrator.FromFS(fsys)
-
-		// Assert
-		require.NoError(t, err)
-		require.NotNil(t, m)
-		assert.NotEmpty(t, m.Hash())
-	})
 }
 
 func Test_FSMigrator_Migrate(t *testing.T) {
@@ -265,27 +250,29 @@ INSERT INTO migration_log (value) VALUES ('second');`)},
 		},
 	)
 
-	t.Run("should do nothing for an empty filesystem", func(t *testing.T) {
+	t.Run("should accept an empty filesystem and migrate without a connection", func(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
 		m, err := migrator.FromFS(fstest.MapFS{})
 		require.NoError(t, err)
+		require.NotNil(t, m)
 
 		// Act
 		err = m.Migrate(t.Context(), nil)
 
 		// Assert
 		require.NoError(t, err)
+		assert.NotEmpty(t, m.Hash())
 	})
 
 	// Arrange
 	tests := []struct {
-		name     string
-		sql      string
-		error    string
-		values   []string
-		postgres bool
+		name            string
+		sql             string
+		error           string
+		values          []string
+		isPostgresError bool
 	}{
 		{
 			name:   "should stop when a migration cannot be split",
@@ -298,9 +285,9 @@ INSERT INTO migration_log (value) VALUES ('second');`)},
 			sql: `INSERT INTO migration_log (value) VALUES ('partial');
 SELECT * FROM missing_migration_table;
 INSERT INTO migration_log (value) VALUES ('unreachable');`,
-			error:    `execute SQL migration "002-failure.sql" at 2:1`,
-			values:   []string{"before", "partial"},
-			postgres: true,
+			error:           `execute SQL migration "002-failure.sql" at 2:1`,
+			values:          []string{"before", "partial"},
+			isPostgresError: true,
 		},
 	}
 
@@ -329,7 +316,7 @@ INSERT INTO migration_log (value) VALUES ('before');`)},
 			// Assert
 			require.ErrorContains(t, err, tt.error)
 
-			if tt.postgres {
+			if tt.isPostgresError {
 				var pgErr *pgconn.PgError
 
 				require.ErrorAs(t, err, &pgErr)
